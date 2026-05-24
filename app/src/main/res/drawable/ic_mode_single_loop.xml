@@ -1,0 +1,23 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorOnSurface">
+
+    <!-- 原图标上半部分 -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M7,7h10v3l4,-4 -4,-4v3L5,5v6h2L7,7z" />
+
+    <!-- 原图标下半部分 -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M17,17L7,17v-3l-4,4 4,4v-3h12v-6h-2v4z" />
+
+    <!-- 实心数字 1（缩小并居中，不与箭头接触） -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M11,7.8 h2 v8.4 h-2 Z M10.5,7.8 h3 v1.2 h-3 Z" />
+
+</vector>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_play_queue"
+        android:icon="@drawable/ic_queue_music"
+        android:title="播放队列" />
+    <item
+        android:id="@+id/action_timer"
+        android:icon="@drawable/ic_timer"
+        android:title="定时停止播放" />
+    <item
+        android:id="@+id/action_lyric_font_size"
+        android:icon="@drawable/ic_format_size"
+        android:title="歌词字体大小" />
+</menu>

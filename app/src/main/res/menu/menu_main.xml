@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/action_scan_all"
+        android:title="全盘扫描" />
+    <item
+        android:id="@+id/action_scan_custom"
+        android:title="自定义扫描" />
+</menu>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">音乐</string>
+    <string name="menu_songs">歌曲</string>
+    <string name="play_pause">播放/暂停</string>
+    <string name="next_song">下一首</string>
+    <string name="previous_song">上一首</string>
+    <string name="permission_required">需要存储权限才能播放本地音乐</string>
+    <string name="playlists">播放列表</string>
+    <string name="settings">设置</string>
+    <string name="no_lyrics">暂无歌词</string>
+
+    <string name="navigation_drawer_open">导航侧边栏打开</string>
+    <string name="navigation_drawer_close">导航侧边栏关闭</string>
+</resources>

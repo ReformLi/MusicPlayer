@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/songsFragment">
+
+    <fragment
+        android:id="@+id/songsFragment"
+        android:name="com.hpu.musicplayer.ui.fragment.SongsFragment"
+        android:label="本地音乐"
+        tools:layout="@layout/fragment_songs">
+        <action
+            android:id="@+id/action_songsFragment_to_playerFragment"
+            app:destination="@id/playerFragment" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/playerFragment"
+        android:name="com.hpu.musicplayer.ui.fragment.PlayerFragment"
+        android:label="正在播放">
+        <argument
+            android:name="songId"
+            app:argType="long" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/playQueueFragment"
+        android:name="com.hpu.musicplayer.ui.fragment.PlayQueueFragment"
+        android:label="播放队列"
+        tools:layout="@layout/fragment_play_queue" />
+
+    <fragment
+        android:id="@+id/historyFragment"
+        android:name="com.hpu.musicplayer.ui.fragment.HistoryFragment"
+        android:label="播放历史"
+        tools:layout="@layout/fragment_history" />
+
+    <fragment
+        android:id="@+id/settingsFragment"
+        android:name="com.hpu.musicplayer.ui.fragment.SettingsFragment"
+        android:label="设置"
+        tools:layout="@layout/fragment_settings" />
+
+    <fragment
+        android:id="@+id/scanResultFragment"
+        android:name="com.hpu.musicplayer.ui.fragment.ScanResultFragment"
+        android:label="扫描结果" />
+
+    <fragment
+        android:id="@+id/musicLibraryFragment"
+        android:name="com.hpu.musicplayer.ui.fragment.MusicLibraryFragment"
+        android:label="音乐库"
+        tools:layout="@layout/fragment_songs" />
+
+    <fragment
+        android:id="@+id/songDetailFragment"
+        android:name="com.hpu.musicplayer.ui.fragment.SongDetailFragment"
+        android:label="歌曲详情">
+        <argument
+            android:name="songId"
+            app:argType="long" />
+    </fragment>
+
+    <fragment
+        android:id="@+id/favoritesFragment"
+        android:name="com.hpu.musicplayer.ui.fragment.FavoritesFragment"
+        android:label="我的最爱"
+        tools:layout="@layout/fragment_songs" />
+
+<!--    <fragment-->
+<!--        android:id="@+id/nav_favorites"-->
+<!--        android:name="com.hpu.musicplayer.ui.main.FavoritesFragment"-->
+<!--        android:label="我的最爱"-->
+<!--        tools:layout="@layout/fragment_favorites" />-->
+
+<!--    <fragment-->
+<!--        android:id="@+id/nav_settings"-->
+<!--        android:name="com.hpu.musicplayer.ui.fragment.SettingsFragment"-->
+<!--        android:label="设置"-->
+<!--        tools:layout="@layout/fragment_settings" />-->
+
+</navigation>
