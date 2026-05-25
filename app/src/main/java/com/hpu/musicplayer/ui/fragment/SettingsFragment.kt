@@ -1,26 +1,50 @@
 package com.hpu.musicplayer.ui.fragment
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
+import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.data.PlaybackStateEntity
 import com.hpu.musicplayer.databinding.FragmentSettingsBinding
 import com.hpu.musicplayer.service.MusicService
 import com.hpu.musicplayer.service.PlayMode
+import com.hpu.musicplayer.ui.activity.AboutActivity
+import com.hpu.musicplayer.ui.activity.HelpActivity
 import com.hpu.musicplayer.ui.dialog.CacheManagementDialogFragment
+import com.hpu.musicplayer.utils.SettingsPreferences
 import kotlinx.coroutines.launch
 
 class SettingsFragment : Fragment() {
 
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
+
+    // 权限请求启动器
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            // 权限已授予，执行启用通知操作
+            enableNotification()
+        } else {
+            // 用户拒绝，回弹开关并提示
+            binding.switchNotificationControl.isChecked = false
+            Toast.makeText(requireContext(), "需要通知权限才能启用控制", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -32,6 +56,11 @@ class SettingsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        setupNotificationControl()
+        setupThemeSwitch()
+        setupHelp()
+        setupAbout()
 
         binding.tvCacheManagement.setOnClickListener {
             CacheManagementDialogFragment().show(parentFragmentManager, "CacheDialog")
@@ -45,6 +74,119 @@ class SettingsFragment : Fragment() {
                 .setNegativeButton("取消", null)
                 .show()
         }
+    }
+
+    private fun setupNotificationControl() {
+        // 初始化开关状态
+        binding.switchNotificationControl.isChecked =
+            SettingsPreferences.isNotificationControlEnabled(requireContext())
+
+        binding.switchNotificationControl.setOnCheckedChangeListener { _, isChecked ->
+            if (isChecked) {
+                // 用户尝试打开开关
+                if (hasNotificationPermission()) {
+                    // 已有权限，直接启用
+                    enableNotification()
+                } else {
+                    // 无权限，发起申请
+                    requestNotificationPermission()
+                }
+            } else {
+                // 用户关闭开关
+                disableNotification()
+            }
+        }
+    }
+
+    // 检查是否有通知权限
+    private fun hasNotificationPermission(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true // 低于 Android 13 无需权限
+        }
+    }
+
+    // 请求通知权限
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            requestPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        } else {
+            // 理论上不会走到这里，但安全兜底
+            enableNotification()
+        }
+    }
+
+    // 启用通知的具体逻辑
+    @SuppressLint("MissingPermission")
+    private fun enableNotification() {
+        SettingsPreferences.setNotificationControlEnabled(requireContext(), true)
+        MusicService.getInstance()?.updateNotification()
+        Toast.makeText(requireContext(), R.string.notification_enabled, Toast.LENGTH_SHORT).show()
+    }
+
+    // 禁用通知的具体逻辑
+    private fun disableNotification() {
+        SettingsPreferences.setNotificationControlEnabled(requireContext(), false)
+        MusicService.getInstance()?.hideNotification()
+        Toast.makeText(requireContext(), R.string.notification_disabled, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun setupThemeSwitch() {
+        binding.tvThemeSwitch.setOnClickListener {
+            showThemeDialog()
+        }
+    }
+
+    private fun setupHelp() {
+        binding.tvHelp.setOnClickListener {
+            val intent = Intent(requireContext(), HelpActivity::class.java)
+            startActivity(intent)
+        }
+    }
+
+    private fun setupAbout() {
+        binding.tvAbout.setOnClickListener {
+            val intent = Intent(requireContext(), AboutActivity::class.java)
+            startActivity(intent)
+        }
+    }
+
+    private fun showThemeDialog() {
+        val themes = arrayOf(
+            getString(R.string.theme_system),
+            getString(R.string.theme_light),
+            getString(R.string.theme_dark)
+        )
+        val currentTheme = SettingsPreferences.getThemeMode(requireContext())
+        val currentIndex = when (currentTheme) {
+            "light" -> 1
+            "dark" -> 2
+            else -> 0
+        }
+
+        AlertDialog.Builder(requireContext())
+            .setTitle(R.string.select_theme)
+            .setSingleChoiceItems(themes, currentIndex) { dialog, which ->
+                val themeMode = when (which) {
+                    1 -> "light"
+                    2 -> "dark"
+                    else -> "system"
+                }
+                SettingsPreferences.setThemeMode(requireContext(), themeMode)
+                applyTheme(themeMode)
+                dialog.dismiss()
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
+    private fun applyTheme(themeMode: String) {
+        Toast.makeText(requireContext(), "主题设置已保存", Toast.LENGTH_SHORT).show()
+        // 对于Material3.DayNight主题，设置会被保存，下次启动时生效
     }
 
     private fun resetLibrary() {

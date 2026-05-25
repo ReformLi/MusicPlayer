@@ -29,6 +29,16 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.activity.HelpActivity"
+            android:exported="false"
+            android:theme="@style/Theme.HpuMusicPlayer" />
+
+        <activity
+            android:name=".ui.activity.AboutActivity"
+            android:exported="false"
+            android:theme="@style/Theme.HpuMusicPlayer" />
+
         <service
             android:name=".service.MusicService"
             android:foregroundServiceType="mediaPlayback"

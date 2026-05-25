@@ -1,5 +1,6 @@
 package com.hpu.musicplayer.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -19,6 +20,7 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import android.widget.Toast
+import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import com.hpu.musicplayer.MainActivity
@@ -28,6 +30,7 @@ import com.hpu.musicplayer.data.PlayHistory
 import com.hpu.musicplayer.data.PlaybackStateEntity
 import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.receiver.NotificationActionReceiver
+import com.hpu.musicplayer.utils.SettingsPreferences
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -148,7 +151,9 @@ class MusicService : Service() {
         if (currentSong?.id == song.id && mediaPlayer?.isPlaying == false) {
             mediaPlayer?.start()
             updateState(song, PlaybackState.PLAYING)
-            startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
+            if (SettingsPreferences.isNotificationControlEnabled(this@MusicService)) {
+                startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
+            }
             startProgressUpdates()
             CoroutineScope(Dispatchers.IO).launch { saveCurrentState() }
             return
@@ -178,7 +183,9 @@ class MusicService : Service() {
             currentSong = song
             updateState(song, PlaybackState.PLAYING)
             startProgressUpdates()
-            startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
+            if (SettingsPreferences.isNotificationControlEnabled(this@MusicService)) {
+                startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
+            }
 
             // 记录播放历史
             CoroutineScope(Dispatchers.IO).launch {
@@ -218,7 +225,9 @@ class MusicService : Service() {
     fun resume() {
         mediaPlayer?.start()
         updateState(currentSong, PlaybackState.PLAYING)
-        startForeground(NOTIFICATION_ID, buildNotification(currentSong, PlaybackState.PLAYING))
+        if (SettingsPreferences.isNotificationControlEnabled(this@MusicService)) {
+            startForeground(NOTIFICATION_ID, buildNotification(currentSong, PlaybackState.PLAYING))
+        }
     }
 
     fun togglePlayPause() {
@@ -458,6 +467,23 @@ class MusicService : Service() {
             this, action.hashCode(), intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+    }
+
+    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
+    fun updateNotification() {
+        if (currentSong != null && SettingsPreferences.isNotificationControlEnabled(this)) {
+            val state = if (mediaPlayer?.isPlaying == true) PlaybackState.PLAYING else PlaybackState.PAUSED
+            val notification = buildNotification(currentSong, state)
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        }
+    }
+
+    fun hideNotification() {
+        notificationManager.cancel(NOTIFICATION_ID)
+        // 如果正在播放但通知被禁用，停止前台服务但保持播放
+        if (mediaPlayer?.isPlaying == true) {
+            stopForeground(false)
+        }
     }
 
     private fun showToast(msg: String) {

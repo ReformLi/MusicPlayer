@@ -1,14 +1,17 @@
 package com.hpu.musicplayer.ui.fragment
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
+import android.text.Spannable
+import android.text.SpannableString
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SearchView
@@ -58,6 +61,16 @@ class SongsFragment : Fragment() {
 
     override fun onCreateOptionsMenu(menu: Menu, inflater: MenuInflater) {
         inflater.inflate(R.menu.menu_main, menu)
+        for (i in 0 until menu.size()) {
+            val item = menu.getItem(i)
+            val spannable = SpannableString(item.title)
+            spannable.setSpan(
+                ForegroundColorSpan(Color.BLACK), // 或 getColor(R.color.xxx)
+                0, spannable.length,
+                Spannable.SPAN_INCLUSIVE_INCLUSIVE
+            )
+            item.title = spannable
+        }
         super.onCreateOptionsMenu(menu, inflater)
     }
 

@@ -53,7 +53,7 @@ class LyricAdapter : RecyclerView.Adapter<LyricAdapter.ViewHolder>() {
         val size = if (isCurrent) fontSizeSp * 1.2f else fontSizeSp
         holder.binding.tvLyricLine.textSize = size
         if (isCurrent) {
-            holder.binding.tvLyricLine.setTextColor(Color.WHITE)
+            holder.binding.tvLyricLine.setTextColor(Color.GREEN)
         } else {
             holder.binding.tvLyricLine.setTextColor(Color.GRAY)
         }

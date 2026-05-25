@@ -6,6 +6,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:fitsSystemWindows="true"
+    android:background="?attr/colorSurface"
     tools:openDrawer="start">
 
     <LinearLayout
@@ -13,18 +14,23 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
+        <!-- Modern toolbar with gradient background -->
         <com.google.android.material.appbar.MaterialToolbar
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="?attr/colorPrimary"
+            android:background="?attr/colorSurface"
+            android:elevation="4dp"
             android:theme="@style/ThemeOverlay.Material3.Dark.ActionBar"
-            app:titleTextColor="@android:color/white" />
+            app:titleTextColor="?attr/colorOnSurface"
+            app:titleCentered="false" />
 
+        <!-- Main content area -->
         <FrameLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_weight="1">
+            android:layout_weight="1"
+            android:background="?attr/colorSurface">
 
             <androidx.fragment.app.FragmentContainerView
                 android:id="@+id/nav_host_fragment"
@@ -36,6 +42,7 @@
 
         </FrameLayout>
 
+        <!-- Enhanced mini player with better visual design -->
         <include
             android:id="@+id/mini_player"
             layout="@layout/mini_player"
@@ -43,13 +50,20 @@
 
     </LinearLayout>
 
+    <!-- Modern navigation drawer -->
     <com.google.android.material.navigation.NavigationView
         android:id="@+id/nav_view"
-        android:layout_width="wrap_content"
+        android:layout_width="320dp"
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:fitsSystemWindows="true"
+        android:background="?attr/colorSurface"
         app:headerLayout="@layout/nav_header_main"
-        app:menu="@menu/activity_main_drawer" />
+        app:menu="@menu/activity_main_drawer"
+        app:itemIconTint="?attr/colorOnSurface"
+        app:itemTextColor="?attr/colorOnSurface"
+        app:itemTextAppearance="@style/TextAppearance.Material3.BodyLarge"
+        app:itemHorizontalPadding="24dp"
+        app:itemVerticalPadding="12dp" />
 
 </androidx.drawerlayout.widget.DrawerLayout>

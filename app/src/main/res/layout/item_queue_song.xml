@@ -1,41 +1,61 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
-    android:padding="12dp"
-    android:background="?attr/selectableItemBackground">
+    android:layout_marginHorizontal="16dp"
+    android:layout_marginVertical="4dp"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="2dp"
+    app:strokeWidth="0dp"
+    app:cardBackgroundColor="?attr/colorSurface">
 
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="vertical">
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:padding="16dp"
+        android:background="?attr/selectableItemBackground">
 
-        <TextView
-            android:id="@+id/tvQueueTitle"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:textColor="@android:color/white"
-            android:textSize="16sp"
-            android:singleLine="true" />
+            android:layout_weight="1"
+            android:orientation="vertical">
 
-        <TextView
-            android:id="@+id/tvQueueArtist"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="#AAAAAA"
-            android:textSize="14sp"
-            android:singleLine="true" />
+            <TextView
+                android:id="@+id/tvQueueTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.TitleMedium"
+                android:textColor="?attr/colorOnSurface"
+                android:singleLine="true" />
+
+            <TextView
+                android:id="@+id/tvQueueArtist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:singleLine="true" />
+        </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/ivDelete"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:insetTop="0dp"
+            android:insetBottom="0dp"
+            android:padding="0dp"
+            app:icon="@drawable/ic_clear"
+            app:iconGravity="textStart"
+            app:iconPadding="0dp"
+            app:iconTint="?attr/colorOnSurfaceVariant"
+            android:contentDescription="删除" />
+
     </LinearLayout>
 
-    <ImageView
-        android:id="@+id/ivDelete"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:src="@drawable/ic_clear"
-        android:padding="4dp"
-        android:contentDescription="删除"
-        android:background="?attr/selectableItemBackgroundBorderless" />
-</LinearLayout>
+</com.google.android.material.card.MaterialCardView>

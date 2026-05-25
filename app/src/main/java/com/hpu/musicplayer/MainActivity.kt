@@ -25,6 +25,7 @@ import com.hpu.musicplayer.service.MusicService
 import com.hpu.musicplayer.service.PlayMode
 import com.hpu.musicplayer.service.PlaybackState
 import com.hpu.musicplayer.utils.Permissions
+import com.hpu.musicplayer.utils.SettingsPreferences
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import kotlinx.coroutines.launch
 
@@ -46,6 +47,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        // Apply theme before super.onCreate
+        applyTheme()
         super.onCreate(savedInstanceState)
 
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -141,7 +144,8 @@ class MainActivity : AppCompatActivity() {
 
                 if (data.currentSong != null) {
                     binding.miniPlayer.root.visibility = View.VISIBLE
-                    binding.miniPlayer.miniTitle.text = data.currentSong?.title
+                    binding.miniPlayer.miniTitle.text = data.currentSong?.title ?: "未知歌曲"
+                    binding.miniPlayer.miniArtist.text = data.currentSong?.artist ?: "未知艺术家"
                     binding.miniPlayer.miniPlayPause.setImageResource(
                         if (data.state == PlaybackState.PLAYING) R.drawable.ic_pause
                         else R.drawable.ic_play
@@ -161,6 +165,14 @@ class MainActivity : AppCompatActivity() {
         binding.miniPlayer.miniPlayPause.setOnClickListener {
             playerViewModel.togglePlayPause()
         }
+
+        binding.miniPlayer.miniPrevious.setOnClickListener {
+            playerViewModel.playPrevious()
+        }
+
+        binding.miniPlayer.miniNext.setOnClickListener {
+            playerViewModel.playNext()
+        }
     }
 
     private fun refreshMiniPlayer() {
@@ -168,7 +180,8 @@ class MainActivity : AppCompatActivity() {
         val data = playerViewModel.playerState.value
         if (data.currentSong != null) {
             binding.miniPlayer.root.visibility = View.VISIBLE
-            binding.miniPlayer.miniTitle.text = data.currentSong?.title
+            binding.miniPlayer.miniTitle.text = data.currentSong?.title ?: "未知歌曲"
+            binding.miniPlayer.miniArtist.text = data.currentSong?.artist ?: "未知艺术家"
             binding.miniPlayer.miniPlayPause.setImageResource(
                 if (data.state == PlaybackState.PLAYING) R.drawable.ic_pause
                 else R.drawable.ic_play
@@ -229,6 +242,17 @@ class MainActivity : AppCompatActivity() {
             "需要存储权限才能播放本地音乐",
             Toast.LENGTH_LONG
         ).show()
+    }
+
+    private fun applyTheme() {
+        when (SettingsPreferences.getThemeMode(this)) {
+            "light" -> setTheme(R.style.Theme_HpuMusicPlayer)
+            "dark" -> setTheme(R.style.Theme_HpuMusicPlayer)
+            else -> {
+                // 跟随系统，使用默认主题
+                setTheme(R.style.Theme_HpuMusicPlayer)
+            }
+        }
     }
 
     override fun onSupportNavigateUp(): Boolean {

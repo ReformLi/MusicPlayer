@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@android:color/black"
+    android:background="?attr/colorSurface"
     android:padding="16dp">
 
     <LinearLayout
@@ -11,168 +12,184 @@
         android:orientation="vertical">
 
         <!-- 封面区域 -->
-        <RelativeLayout
-            android:layout_width="match_parent"
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="24dp">
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="24dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="4dp"
+            app:strokeWidth="0dp">
 
-            <ImageView
+            <com.google.android.material.imageview.ShapeableImageView
                 android:id="@+id/ivDetailCover"
                 android:layout_width="120dp"
                 android:layout_height="120dp"
                 android:scaleType="centerCrop"
-                android:src="@drawable/ic_music_note" />
+                android:src="@drawable/ic_music_note"
+                app:shapeAppearanceOverlay="@style/ShapeAppearance.HpuMusicPlayer.Medium" />
+        </com.google.android.material.card.MaterialCardView>
 
-            <Button
-                android:id="@+id/btnChangeCover"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="修改封面"
-                android:layout_toEndOf="@id/ivDetailCover"
-                android:layout_marginStart="16dp"
-                android:layout_centerVertical="true" />
-        </RelativeLayout>
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnChangeCover"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="24dp"
+            android:text="修改封面"
+            app:cornerRadius="20dp" />
 
         <!-- 歌曲字段 -->
-        <LinearLayout
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingVertical="8dp">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="歌曲："
-                android:textColor="@android:color/white"
-                android:textSize="16sp"
-                android:layout_marginEnd="8dp" />
-            <EditText
+            android:layout_marginBottom="16dp"
+            android:hint="歌曲名称"
+            app:boxBackgroundColor="?attr/colorSurfaceVariant"
+            app:boxCornerRadiusTopStart="8dp"
+            app:boxCornerRadiusTopEnd="8dp"
+            app:boxStrokeColor="?attr/colorPrimary"
+            app:hintTextColor="?attr/colorPrimary">
+
+            <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etTitle"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="@android:color/white"
-                android:textSize="16sp"
-                android:background="@null" />
-        </LinearLayout>
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#33FFFFFF" />
+                android:textColor="?attr/colorOnSurface"
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge" />
+        </com.google.android.material.textfield.TextInputLayout>
 
         <!-- 艺术家字段 -->
-        <LinearLayout
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingVertical="8dp">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="艺术家："
-                android:textColor="@android:color/white"
-                android:textSize="16sp"
-                android:layout_marginEnd="8dp" />
-            <EditText
+            android:layout_marginBottom="16dp"
+            android:hint="艺术家"
+            app:boxBackgroundColor="?attr/colorSurfaceVariant"
+            app:boxCornerRadiusTopStart="8dp"
+            app:boxCornerRadiusTopEnd="8dp"
+            app:boxStrokeColor="?attr/colorPrimary"
+            app:hintTextColor="?attr/colorPrimary">
+
+            <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etArtist"
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="@android:color/white"
-                android:textSize="16sp"
-                android:background="@null" />
-        </LinearLayout>
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#33FFFFFF" />
+                android:textColor="?attr/colorOnSurface"
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge" />
+        </com.google.android.material.textfield.TextInputLayout>
 
         <!-- 专辑字段 -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="24dp"
+            android:hint="专辑"
+            app:boxBackgroundColor="?attr/colorSurfaceVariant"
+            app:boxCornerRadiusTopStart="8dp"
+            app:boxCornerRadiusTopEnd="8dp"
+            app:boxStrokeColor="?attr/colorPrimary"
+            app:hintTextColor="?attr/colorPrimary">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etAlbum"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="?attr/colorOnSurface"
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- 固定信息卡片 -->
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="2dp"
+            app:strokeWidth="0dp"
+            app:cardBackgroundColor="?attr/colorSurfaceVariant">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="文件信息"
+                    android:textAppearance="@style/TextAppearance.HpuMusicPlayer.TitleMedium"
+                    android:textColor="?attr/colorOnSurface"
+                    android:layout_marginBottom="12dp" />
+
+                <TextView
+                    android:id="@+id/tvType"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/tvDuration"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/tvFileSize"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/tvFilePath"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:layout_marginBottom="4dp" />
+
+                <TextView
+                    android:id="@+id/tvCoverPath"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- 歌词路径修改 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:paddingVertical="8dp">
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="专辑："
-                android:textColor="@android:color/white"
-                android:textSize="16sp"
-                android:layout_marginEnd="8dp" />
-            <EditText
-                android:id="@+id/etAlbum"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:textColor="@android:color/white"
-                android:textSize="16sp"
-                android:background="@null" />
-        </LinearLayout>
-        <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#33FFFFFF" />
-
-        <!-- 固定信息 -->
-        <TextView
-            android:id="@+id/tvType"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#AAAAAA"
-            android:textSize="14sp"
-            android:layout_marginTop="16dp" />
-
-        <TextView
-            android:id="@+id/tvDuration"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#AAAAAA"
-            android:textSize="14sp"
-            android:layout_marginTop="8dp" />
-
-        <TextView
-            android:id="@+id/tvFileSize"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#AAAAAA"
-            android:textSize="14sp"
-            android:layout_marginTop="8dp" />
-
-        <TextView
-            android:id="@+id/tvFilePath"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#AAAAAA"
-            android:textSize="14sp"
-            android:layout_marginTop="8dp" />
-
-        <!-- 封面路径（不可直接编辑，通过按钮修改） -->
-        <TextView
-            android:id="@+id/tvCoverPath"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="#AAAAAA"
-            android:textSize="14sp"
-            android:layout_marginTop="8dp" />
-
-        <!-- 歌词路径修改 -->
-        <RelativeLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:gravity="center_vertical">
+            android:layout_marginBottom="24dp">
 
             <TextView
                 android:id="@+id/tvLrcPath"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:textColor="#AAAAAA"
-                android:textSize="14sp"
-                android:layout_toStartOf="@+id/btnChangeLrc"
-                android:layout_alignParentStart="true" />
+                android:layout_weight="1"
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:layout_marginEnd="16dp" />
 
-            <Button
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnChangeLrc"
+                style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="修改歌词"
-                android:layout_alignParentEnd="true" />
-        </RelativeLayout>
+                app:cornerRadius="20dp" />
+        </LinearLayout>
 
         <!-- 收藏开关 -->
         <LinearLayout
@@ -180,52 +197,57 @@
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
-            android:layout_marginTop="24dp">
+            android:layout_marginBottom="16dp">
 
             <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="收藏"
-                android:textColor="@android:color/white"
-                android:textSize="16sp" />
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.TitleMedium"
+                android:textColor="?attr/colorOnSurface" />
 
-            <Switch
+            <com.google.android.material.switchmaterial.SwitchMaterial
                 android:id="@+id/swFavorite"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:theme="@style/Theme.HpuMusicPlayer" />
         </LinearLayout>
 
         <TextView
             android:id="@+id/tvAddedDate"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textColor="#AAAAAA"
-            android:textSize="14sp"
-            android:layout_marginTop="8dp"
-            android:text="创建时间: " />
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:layout_marginBottom="24dp" />
 
         <!-- 底部按钮：取消 + 保存 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="24dp"
             android:gravity="center">
-            <Button
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnCancel"
+                style="@style/Widget.Material3.Button.OutlinedButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:layout_marginEnd="8dp"
                 android:text="取消"
-                android:layout_marginEnd="8dp" />
-            <Button
+                app:cornerRadius="20dp" />
+
+            <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnSave"
+                style="@style/Widget.Material3.Button.ElevatedButton"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:layout_marginStart="8dp"
                 android:text="保存"
-                android:layout_marginStart="8dp" />
+                app:cornerRadius="20dp" />
         </LinearLayout>
     </LinearLayout>
 </ScrollView>

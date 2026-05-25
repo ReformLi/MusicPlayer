@@ -1,6 +1,7 @@
 package com.hpu.musicplayer.ui.fragment
 
 import android.app.AlertDialog
+import android.content.DialogInterface
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -9,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.PopupMenu
 import android.widget.SeekBar
 import androidx.activity.OnBackPressedCallback
+import com.google.android.material.slider.Slider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -158,8 +160,8 @@ class PlayerFragment : Fragment() {
 
             // 进度条（仅在非拖动时更新）
             if (!binding.seekBar.isPressed) {
-                binding.seekBar.max = data.duration.toInt()
-                binding.seekBar.progress = data.progress.toInt()
+                binding.seekBar.valueTo = data.duration.toFloat()
+                binding.seekBar.value = data.progress.toFloat()
             }
 
             // 播放/暂停图标
@@ -186,7 +188,7 @@ class PlayerFragment : Fragment() {
             binding.tvSongArtist.text = ""
             binding.tvCurrentTime.text = "00:00"
             binding.tvTotalTime.text = "00:00"
-            binding.seekBar.progress = 0
+            binding.seekBar.value = 0f
             binding.btnPlayPause.setImageResource(R.drawable.ic_play)
             binding.ivAlbumArt.setImageResource(R.drawable.ic_music_note)
             binding.tvNoLyrics.visibility = View.VISIBLE
@@ -221,12 +223,8 @@ class PlayerFragment : Fragment() {
             playerViewModel.togglePlayPause()
         }
 
-        binding.seekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                if (fromUser) playerViewModel.seekTo(progress.toLong())
-            }
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+        binding.seekBar.addOnChangeListener(Slider.OnChangeListener { slider, value, fromUser ->
+            if (fromUser) playerViewModel.seekTo(value.toLong())
         })
 
         binding.btnNext.setOnClickListener {
@@ -304,7 +302,7 @@ class PlayerFragment : Fragment() {
                 lyricAdapter.updateFontSize(newSize)
                 dialog.dismiss()
             }
-            .setNegativeButton("取消") { dialog, _ ->
+            .setNegativeButton("取消") { dialog: DialogInterface, _: Int ->
                 // 恢复原大小
                 lyricAdapter.updateFontSize(currentSize)
                 dialog.dismiss()
