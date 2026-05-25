@@ -18,6 +18,7 @@ import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.NavigationUI
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
+import coil.load
 import com.google.android.material.navigation.NavigationView
 import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.databinding.ActivityMainBinding
@@ -28,6 +29,7 @@ import com.hpu.musicplayer.utils.Permissions
 import com.hpu.musicplayer.utils.SettingsPreferences
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import kotlinx.coroutines.launch
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
@@ -146,6 +148,18 @@ class MainActivity : AppCompatActivity() {
                     binding.miniPlayer.root.visibility = View.VISIBLE
                     binding.miniPlayer.miniTitle.text = data.currentSong?.title ?: "未知歌曲"
                     binding.miniPlayer.miniArtist.text = data.currentSong?.artist ?: "未知艺术家"
+
+                    // 加载封面图片
+                    val coverPath = data.currentSong?.coverPath
+                    if (!coverPath.isNullOrEmpty()) {
+                        binding.miniPlayer.miniCover.load(File(coverPath)) {
+                            placeholder(R.drawable.ic_music_note)
+                            error(R.drawable.ic_music_note)
+                        }
+                    } else {
+                        binding.miniPlayer.miniCover.setImageResource(R.drawable.ic_music_note)
+                    }
+
                     binding.miniPlayer.miniPlayPause.setImageResource(
                         if (data.state == PlaybackState.PLAYING) R.drawable.ic_pause
                         else R.drawable.ic_play
@@ -182,6 +196,18 @@ class MainActivity : AppCompatActivity() {
             binding.miniPlayer.root.visibility = View.VISIBLE
             binding.miniPlayer.miniTitle.text = data.currentSong?.title ?: "未知歌曲"
             binding.miniPlayer.miniArtist.text = data.currentSong?.artist ?: "未知艺术家"
+
+            // 加载封面图片（与上面相同）
+            val coverPath = data.currentSong?.coverPath
+            if (!coverPath.isNullOrEmpty()) {
+                binding.miniPlayer.miniCover.load(File(coverPath)) {
+                    placeholder(R.drawable.ic_music_note)
+                    error(R.drawable.ic_music_note)
+                }
+            } else {
+                binding.miniPlayer.miniCover.setImageResource(R.drawable.ic_music_note)
+            }
+
             binding.miniPlayer.miniPlayPause.setImageResource(
                 if (data.state == PlaybackState.PLAYING) R.drawable.ic_pause
                 else R.drawable.ic_play
