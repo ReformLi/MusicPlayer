@@ -25,6 +25,8 @@ import com.hpu.musicplayer.ui.activity.AboutActivity
 import com.hpu.musicplayer.ui.activity.HelpActivity
 import com.hpu.musicplayer.ui.dialog.CacheManagementDialogFragment
 import com.hpu.musicplayer.utils.SettingsPreferences
+import com.hpu.musicplayer.utils.ThemeChangeManager
+import com.hpu.musicplayer.utils.ThemeHelper
 import kotlinx.coroutines.launch
 
 class SettingsFragment : Fragment() {
@@ -74,6 +76,12 @@ class SettingsFragment : Fragment() {
                 .setNegativeButton("取消", null)
                 .show()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 确保主题切换文本是最新的
+        updateThemeSwitchText()
     }
 
     private fun setupNotificationControl() {
@@ -136,9 +144,17 @@ class SettingsFragment : Fragment() {
     }
 
     private fun setupThemeSwitch() {
+        updateThemeSwitchText()
         binding.tvThemeSwitch.setOnClickListener {
             showThemeDialog()
         }
+    }
+
+    private fun updateThemeSwitchText() {
+        val currentTheme = SettingsPreferences.getThemeMode(requireContext())
+        val themeText = ThemeHelper.getThemeDisplayName(currentTheme, requireContext())
+        // 更新主题描述文本以显示当前选择
+        binding.tvThemeSwitch.text = "${getString(R.string.theme_switch)}\n当前: $themeText"
     }
 
     private fun setupHelp() {
@@ -157,7 +173,7 @@ class SettingsFragment : Fragment() {
 
     private fun showThemeDialog() {
         val themes = arrayOf(
-            getString(R.string.theme_system),
+            "${getString(R.string.theme_system)} (推荐)",
             getString(R.string.theme_light),
             getString(R.string.theme_dark)
         )
@@ -176,17 +192,40 @@ class SettingsFragment : Fragment() {
                     2 -> "dark"
                     else -> "system"
                 }
-                SettingsPreferences.setThemeMode(requireContext(), themeMode)
-                applyTheme(themeMode)
+
+                if (ThemeHelper.isValidThemeMode(themeMode)) {
+                    SettingsPreferences.setThemeMode(requireContext(), themeMode)
+
+                    // 通知主题变化
+                    ThemeChangeManager.notifyThemeChanged(themeMode)
+
+                    applyThemeAndRecreate(themeMode)
+                } else {
+                    Toast.makeText(requireContext(), R.string.invalid_theme, Toast.LENGTH_SHORT).show()
+                }
+
                 dialog.dismiss()
             }
             .setNegativeButton(android.R.string.cancel, null)
+            .setPositiveButton("确定") { dialog, _ ->
+                dialog.dismiss()
+            }
             .show()
     }
 
-    private fun applyTheme(themeMode: String) {
-        Toast.makeText(requireContext(), "主题设置已保存", Toast.LENGTH_SHORT).show()
-        // 对于Material3.DayNight主题，设置会被保存，下次启动时生效
+    private fun applyThemeAndRecreate(themeMode: String) {
+        // 应用主题模式到应用委托
+        ThemeHelper.applyThemeMode(themeMode)
+
+        Toast.makeText(requireContext(), R.string.theme_changed, Toast.LENGTH_SHORT).show()
+
+        // 立即更新UI文本显示
+        updateThemeSwitchText()
+
+        // 重新创建活动以立即应用新主题
+        if (activity is com.hpu.musicplayer.MainActivity) {
+            (activity as com.hpu.musicplayer.MainActivity).recreateWithTheme()
+        }
     }
 
     private fun resetLibrary() {

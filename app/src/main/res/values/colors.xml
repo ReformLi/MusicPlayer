@@ -53,6 +53,28 @@
     <color name="gradient_start">#FF667eea</color>
     <color name="gradient_end">#FF764ba2</color>
 
+    <!-- Dark theme colors -->
+    <color name="dark_background">#FF121212</color>
+    <color name="dark_surface">#FF1E1E1E</color>
+    <color name="dark_surface_variant">#FF2D2D2D</color>
+    <color name="dark_on_surface">#FFFFFFFF</color>
+    <color name="dark_on_surface_variant">#FFE0E0E0</color>
+    <color name="dark_text_primary">#FFFFFFFF</color>
+    <color name="dark_text_secondary">#FFB3B3B3</color>
+    <color name="dark_text_tertiary">#FF808080</color>
+
+    <!-- Navigation drawer specific colors -->
+    <color name="nav_drawer_light">#FFF5F5F5</color>
+    <color name="nav_drawer_dark">#FF2C2C2C</color>
+    <color name="nav_drawer_elevation_light">#FFFFFFFF</color>
+    <color name="nav_drawer_elevation_dark">#FF383838</color>
+
+    <!-- Additional accent colors for theme variations -->
+    <color name="accent_purple">#FF9C27B0</color>
+    <color name="accent_indigo">#FF3F51B5</color>
+    <color name="accent_teal">#FF009688</color>
+    <color name="accent_orange_deep">#FFFF5722</color>
+
     <!-- Legacy colors for compatibility -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>

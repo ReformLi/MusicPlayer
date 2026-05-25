@@ -21,7 +21,6 @@
             android:layout_height="?attr/actionBarSize"
             android:background="?attr/colorSurface"
             android:elevation="4dp"
-            android:theme="@style/ThemeOverlay.Material3.Dark.ActionBar"
             app:titleTextColor="?attr/colorOnSurface"
             app:titleCentered="false" />
 
@@ -57,13 +56,17 @@
         android:layout_height="match_parent"
         android:layout_gravity="start"
         android:fitsSystemWindows="true"
-        android:background="?attr/colorSurface"
+        android:background="?attr/colorSurfaceVariant"
+        android:elevation="8dp"
         app:headerLayout="@layout/nav_header_main"
         app:menu="@menu/activity_main_drawer"
-        app:itemIconTint="?attr/colorOnSurface"
-        app:itemTextColor="?attr/colorOnSurface"
-        app:itemTextAppearance="@style/TextAppearance.Material3.BodyLarge"
+        app:itemIconTint="?attr/colorOnSurfaceVariant"
+        app:itemTextColor="?attr/colorOnSurfaceVariant"
+        app:itemTextAppearance="@style/TextAppearance.AppCompat.Body1"
         app:itemHorizontalPadding="24dp"
-        app:itemVerticalPadding="12dp" />
+        app:itemVerticalPadding="12dp"
+        app:itemBackground="?attr/selectableItemBackground"
+        app:dividerInsetStart="16dp"
+        app:dividerInsetEnd="16dp" />
 
 </androidx.drawerlayout.widget.DrawerLayout>

@@ -137,7 +137,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="选择浅色、深色或跟随系统"
+                            android:text="选择浅色、深色或跟随系统主题\n更改将立即生效"
                             android:textColor="?attr/colorOnSurfaceVariant"
                             android:textSize="14sp" />
 

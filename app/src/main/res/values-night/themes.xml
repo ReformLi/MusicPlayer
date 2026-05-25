@@ -7,20 +7,20 @@
         <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
 
         <!-- Secondary colors -->
-        <item name="colorSecondary">@color/accent_blue</item>
+        <item name="colorSecondary">@color/accent_teal</item>
         <item name="colorOnSecondary">@color/white</item>
         <item name="colorSecondaryContainer">@color/secondary_container</item>
         <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
 
         <!-- Background colors -->
-        <item name="android:colorBackground">@color/background_dark</item>
-        <item name="colorOnBackground">@color/text_primary</item>
+        <item name="android:colorBackground">@color/dark_background</item>
+        <item name="colorOnBackground">@color/dark_text_primary</item>
 
         <!-- Surface colors -->
-        <item name="colorSurface">@color/surface_primary</item>
-        <item name="colorOnSurface">@color/on_surface</item>
-        <item name="colorSurfaceVariant">@color/surface_variant</item>
-        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="colorSurface">@color/dark_surface</item>
+        <item name="colorOnSurface">@color/dark_on_surface</item>
+        <item name="colorSurfaceVariant">@color/nav_drawer_dark</item>
+        <item name="colorOnSurfaceVariant">@color/dark_text_secondary</item>
 
         <!-- Error colors -->
         <item name="colorError">@color/error_red</item>
@@ -33,16 +33,17 @@
         <item name="colorOutlineVariant">@color/text_hint</item>
 
         <!-- Status bar -->
-        <item name="android:statusBarColor">@color/background_dark</item>
-        <item name="android:navigationBarColor">@color/background_dark</item>
+        <item name="android:statusBarColor">@color/dark_background</item>
+        <item name="android:navigationBarColor">@color/dark_background</item>
         <item name="android:windowLightStatusBar">false</item>
+
 
         <!-- Component specific -->
         <item name="colorAccent">@color/accent_blue</item>
 
         <!-- Text appearances -->
-        <item name="android:textColorPrimary">@color/text_primary</item>
-        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorPrimary">@color/dark_text_primary</item>
+        <item name="android:textColorSecondary">@color/dark_text_secondary</item>
 
         <!-- Shape appearances -->
         <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.HpuMusicPlayer.Small</item>

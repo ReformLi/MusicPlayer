@@ -7,6 +7,7 @@ object SettingsPreferences {
     private const val PREFS_NAME = "app_settings"
     private const val KEY_NOTIFICATION_CONTROL = "notification_control"
     private const val KEY_THEME_MODE = "theme_mode"
+    private const val KEY_THEME_ACCENT = "theme_accent"
 
     private fun getPrefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -25,5 +26,18 @@ object SettingsPreferences {
 
     fun setThemeMode(context: Context, mode: String) {
         getPrefs(context).edit().putString(KEY_THEME_MODE, mode).apply()
+    }
+
+    // Theme accent color settings (for future enhancement)
+    fun getThemeAccent(context: Context): String =
+        getPrefs(context).getString(KEY_THEME_ACCENT, "purple") ?: "purple"
+
+    fun setThemeAccent(context: Context, accent: String) {
+        getPrefs(context).edit().putString(KEY_THEME_ACCENT, accent).apply()
+    }
+
+    // Validate theme mode - delegate to ThemeHelper
+    fun isValidThemeMode(mode: String): Boolean {
+        return ThemeHelper.isValidThemeMode(mode)
     }
 }

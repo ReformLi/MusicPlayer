@@ -27,6 +27,7 @@ import com.hpu.musicplayer.service.PlayMode
 import com.hpu.musicplayer.service.PlaybackState
 import com.hpu.musicplayer.utils.Permissions
 import com.hpu.musicplayer.utils.SettingsPreferences
+import com.hpu.musicplayer.utils.ThemeHelper
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import kotlinx.coroutines.launch
 import java.io.File
@@ -271,14 +272,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyTheme() {
-        when (SettingsPreferences.getThemeMode(this)) {
-            "light" -> setTheme(R.style.Theme_HpuMusicPlayer)
-            "dark" -> setTheme(R.style.Theme_HpuMusicPlayer)
-            else -> {
-                // 跟随系统，使用默认主题
-                setTheme(R.style.Theme_HpuMusicPlayer)
-            }
-        }
+        val themeMode = SettingsPreferences.getThemeMode(this)
+        setTheme(R.style.Theme_HpuMusicPlayer)
+
+        // 应用主题模式到应用委托
+        ThemeHelper.applyThemeMode(themeMode)
+    }
+
+    // 重新创建Activity以应用新主题
+    fun recreateWithTheme() {
+        // 重新应用主题模式
+        ThemeHelper.applyThemeMode(SettingsPreferences.getThemeMode(this))
+        recreate()
     }
 
     override fun onSupportNavigateUp(): Boolean {
