@@ -13,6 +13,32 @@
         android:textColor="@android:color/white"
         android:layout_marginBottom="16dp" />
 
+    <!-- 在 RecyclerView 上方添加加载提示 -->
+    <LinearLayout
+        android:id="@+id/loadingContainer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:layout_gravity="center"
+        android:visibility="gone"
+        android:paddingTop="60dp">
+
+        <ProgressBar
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:indeterminateTint="@android:color/white" />
+
+        <TextView
+            android:id="@+id/tvScanning"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="正在扫描，请稍候..."
+            android:textColor="@android:color/white"
+            android:textSize="16sp"
+            android:layout_marginTop="16dp" />
+    </LinearLayout>
+
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvFolders"
         android:layout_width="match_parent"
@@ -24,5 +50,6 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="添加选中的歌曲到本地"
+        android:enabled="false"
         android:layout_marginTop="16dp" />
 </LinearLayout>

@@ -160,8 +160,10 @@ class PlayerFragment : Fragment() {
 
             // 进度条（仅在非拖动时更新）
             if (!binding.seekBar.isPressed) {
-                binding.seekBar.valueTo = data.duration.toFloat()
-                binding.seekBar.value = data.progress.toFloat()
+                val max = data.duration.toFloat()
+                val pos = data.progress.toFloat().coerceAtMost(max)   // 进度不能超过总时长
+                binding.seekBar.valueTo = max
+                binding.seekBar.value = pos
             }
 
             // 播放/暂停图标
@@ -221,6 +223,10 @@ class PlayerFragment : Fragment() {
     private fun setupControls() {
         binding.btnPlayPause.setOnClickListener {
             playerViewModel.togglePlayPause()
+        }
+        // 设置进度条标签格式化
+        binding.seekBar.setLabelFormatter { progress ->
+            formatTime(progress.toLong())
         }
 
         binding.seekBar.addOnChangeListener(Slider.OnChangeListener { slider, value, fromUser ->

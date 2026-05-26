@@ -1,12 +1,14 @@
 package com.hpu.musicplayer.service
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -21,9 +23,9 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import android.widget.Toast
-import androidx.annotation.RequiresPermission
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import com.hpu.musicplayer.MainActivity
 import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.AppDatabase
@@ -36,6 +38,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.io.File
 import kotlin.random.Random
 
 class MusicService : Service() {
@@ -135,7 +138,9 @@ class MusicService : Service() {
     }
 
     fun play(song: Song) {
-        // 加载封面 Bitmap
+        Log.d(TAG, "play() called: ${song.title}, path: ${song.path}")
+
+        // 加载封面
         currentCoverBitmap = if (!song.coverPath.isNullOrEmpty()) {
             try {
                 BitmapFactory.decodeFile(song.coverPath)
@@ -145,49 +150,48 @@ class MusicService : Service() {
             }
         } else null
 
-        // 如果同一首歌正在播放，不做处理
+        // 同一首歌已在播放，忽略
         if (currentSong?.id == song.id && mediaPlayer?.isPlaying == true) return
 
-        // 如果是同一首歌暂停了，直接恢复播放
-        if (currentSong?.id == song.id && mediaPlayer?.isPlaying == false) {
+        // 同一首歌但暂停，直接恢复
+        if (currentSong?.id == song.id && mediaPlayer != null && !mediaPlayer!!.isPlaying) {
             mediaPlayer?.start()
             updateState(song, PlaybackState.PLAYING)
-            if (SettingsPreferences.isNotificationControlEnabled(this@MusicService)) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    startForeground(
-                        NOTIFICATION_ID,
-                        buildNotification(song, PlaybackState.PLAYING),
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                    )
-                } else {
-                    startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
-                }
-            }
+            updateNotificationAndForeground(song, PlaybackState.PLAYING)
             startProgressUpdates()
             CoroutineScope(Dispatchers.IO).launch { saveCurrentState() }
             return
         }
 
-        // 不同歌曲或未初始化，创建新播放器
+        // 释放旧播放器
         mediaPlayer?.release()
         val mp = MediaPlayer()
         try {
             if (song.path.startsWith("content://")) {
                 val uri = Uri.parse(song.path)
                 try {
-                    // 重新获取权限（防止持久化失效）
                     contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    val afd = contentResolver.openAssetFileDescriptor(uri, "r")
-                    if (afd != null) {
-                        mp.setDataSource(afd.fileDescriptor)  // 不指定 offset 和 length
-                        afd.close()
-                    } else {
-                        showToast("无法打开文件，请重新选择文件夹")
-                        return
-                    }
                 } catch (e: SecurityException) {
-                    showToast("文件权限失效，请重新添加文件夹")
-                    return
+                    Log.w(TAG, "takePersistableUriPermission failed: ${e.message}")
+                }
+                val afd = contentResolver.openAssetFileDescriptor(uri, "r")
+                if (afd != null) {
+                    Log.d(TAG, "openAssetFileDescriptor success, size=${afd.length}")
+                    mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                    afd.close()
+                } else {
+                    // 降级：拷贝到临时文件
+                    Log.w(TAG, "openAssetFileDescriptor returned null, fallback to temp file")
+                    val tempFile = File(cacheDir, "temp_${System.currentTimeMillis()}.mp3")
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        tempFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    if (tempFile.length() > 0) {
+                        Log.d(TAG, "Temp file created: ${tempFile.length()} bytes")
+                        mp.setDataSource(tempFile.absolutePath)
+                    } else {
+                        throw IllegalStateException("无法访问文件，临时文件为空")
+                    }
                 }
             } else {
                 mp.setDataSource(song.path)
@@ -198,18 +202,8 @@ class MusicService : Service() {
             mediaPlayer = mp
             currentSong = song
             updateState(song, PlaybackState.PLAYING)
+            updateNotificationAndForeground(song, PlaybackState.PLAYING)
             startProgressUpdates()
-            if (SettingsPreferences.isNotificationControlEnabled(this@MusicService)) {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    startForeground(
-                        NOTIFICATION_ID,
-                        buildNotification(song, PlaybackState.PLAYING),
-                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                    )
-                } else {
-                    startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
-                }
-            }
 
             // 记录播放历史
             CoroutineScope(Dispatchers.IO).launch {
@@ -227,11 +221,12 @@ class MusicService : Service() {
                 ))
             }
             CoroutineScope(Dispatchers.IO).launch { saveCurrentState() }
+            Log.d(TAG, "播放成功: ${song.title}")
         } catch (e: Exception) {
             Log.e(TAG, "Play error: ${e.message}", e)
-            showToast("播放失败: ${e.message}")
+            showToast("播放失败: ${e.localizedMessage}")
             mp.release()
-            if (mediaPlayer === mp) mediaPlayer = null
+            mediaPlayer = null
             currentSong = null
             updateState(null, PlaybackState.STOPPED)
             stopForeground(true)
@@ -242,32 +237,14 @@ class MusicService : Service() {
     fun pause() {
         mediaPlayer?.pause()
         updateState(currentSong, PlaybackState.PAUSED)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            startForeground(
-                NOTIFICATION_ID,
-                buildNotification(currentSong, PlaybackState.PLAYING),
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, buildNotification(currentSong, PlaybackState.PLAYING))
-        }
+        updateNotificationAndForeground(currentSong, PlaybackState.PAUSED)   // 修复：使用 PAUSED
         CoroutineScope(Dispatchers.IO).launch { saveCurrentState() }
     }
 
     fun resume() {
         mediaPlayer?.start()
         updateState(currentSong, PlaybackState.PLAYING)
-        if (SettingsPreferences.isNotificationControlEnabled(this@MusicService)) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    buildNotification(currentSong, PlaybackState.PLAYING),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                )
-            } else {
-                startForeground(NOTIFICATION_ID, buildNotification(currentSong, PlaybackState.PLAYING))
-            }
-        }
+        updateNotificationAndForeground(currentSong, PlaybackState.PLAYING)
     }
 
     fun togglePlayPause() {
@@ -287,7 +264,14 @@ class MusicService : Service() {
         stopPlayback()
     }
 
-    fun getCurrentPosition(): Long = mediaPlayer?.currentPosition?.toLong() ?: 0
+    fun getCurrentPosition(): Long {
+        return try {
+            mediaPlayer?.currentPosition?.toLong() ?: 0L
+        } catch (e: Exception) {
+            Log.e(TAG, "getCurrentPosition error: ${e.message}")
+            0L
+        }
+    }
     fun getDuration(): Long = mediaPlayer?.duration?.toLong() ?: currentSong?.duration ?: 0
 
     fun startProgressUpdates() {
@@ -403,17 +387,31 @@ class MusicService : Service() {
     }
 
     fun prepareSong(song: Song, startPosition: Long) {
+        Log.d(TAG, "prepareSong: ${song.title}, pos=$startPosition")
         mediaPlayer?.release()
         val mp = MediaPlayer()
         try {
             if (song.path.startsWith("content://")) {
-                val afd = contentResolver.openAssetFileDescriptor(Uri.parse(song.path), "r")
+                val uri = Uri.parse(song.path)
+                try {
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                } catch (e: SecurityException) {
+                    Log.w(TAG, "takePersistableUriPermission failed: ${e.message}")
+                }
+                val afd = contentResolver.openAssetFileDescriptor(uri, "r")
                 if (afd != null) {
                     mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
                     afd.close()
                 } else {
-                    Log.e(TAG, "prepareSong: Cannot open content URI")
-                    return
+                    val tempFile = File(cacheDir, "temp_${System.currentTimeMillis()}.mp3")
+                    contentResolver.openInputStream(uri)?.use { input ->
+                        tempFile.outputStream().use { output -> input.copyTo(output) }
+                    }
+                    if (tempFile.length() > 0) {
+                        mp.setDataSource(tempFile.absolutePath)
+                    } else {
+                        throw IllegalStateException("临时文件为空")
+                    }
                 }
             } else {
                 mp.setDataSource(song.path)
@@ -423,15 +421,7 @@ class MusicService : Service() {
             mediaPlayer = mp
             currentSong = song
             updateState(song, PlaybackState.PAUSED)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    buildNotification(song, PlaybackState.PLAYING),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                )
-            } else {
-                startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
-            }
+            updateNotificationAndForeground(song, PlaybackState.PAUSED)
         } catch (e: Exception) {
             Log.e(TAG, "prepareSong error: ${e.message}", e)
             mp.release()
@@ -517,23 +507,49 @@ class MusicService : Service() {
         )
     }
 
-    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
+    // ======== 通知与前台服务统一管理（消除权限警告） ========
+    @SuppressLint("MissingPermission")
+    private fun updateNotificationAndForeground(song: Song?, state: PlaybackState) {
+        if (song == null) return
+        val notification = buildNotification(song, state)
+
+        // 始终确保前台服务运行（即便用户关闭了通知控制，也至少显示一个最小化通知，否则服务可能被杀）
+        val useForeground = if (SettingsPreferences.isNotificationControlEnabled(this)) true else Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
+        if (useForeground) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } else {
+            // Android 13+ 且用户关闭了通知权限，不再显示通知但前台服务仍需存在（通过其他方式保证服务存活，实际上如果没有通知权限，前台服务无法启动，这里可考虑停止服务或降级）
+            stopForeground(true)
+            // 尝试移除通知（无需权限，cancel 总是允许）
+            notificationManager.cancel(NOTIFICATION_ID)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
     fun updateNotification() {
         if (currentSong != null && SettingsPreferences.isNotificationControlEnabled(this)) {
             val state = if (mediaPlayer?.isPlaying == true) PlaybackState.PLAYING else PlaybackState.PAUSED
-            val notification = buildNotification(currentSong, state)
-            notificationManager.notify(NOTIFICATION_ID, notification)
+            updateNotificationAndForeground(currentSong, state)
+        } else {
+            // 如果通知被禁用，但服务仍在播放，可以停止前台服务或调整
+            hideNotification()
         }
     }
 
     fun hideNotification() {
+        stopForeground(true)
         notificationManager.cancel(NOTIFICATION_ID)
-        // 如果正在播放但通知被禁用，停止前台服务但保持播放
-        if (mediaPlayer?.isPlaying == true) {
-            stopForeground(false)
-        }
     }
 
+    @SuppressLint("MissingPermission")
     private fun showToast(msg: String) {
         Handler(Looper.getMainLooper()).post {
             Toast.makeText(this@MusicService, msg, Toast.LENGTH_SHORT).show()

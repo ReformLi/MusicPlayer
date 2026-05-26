@@ -23,16 +23,20 @@ object ScanManager {
 
     private const val TAG = "ScanManager"
 
-    // ---------- 全量扫描（保留旧逻辑，用于完全重建） ----------
-    suspend fun scanAll(context: Context): List<Song> = withContext(Dispatchers.IO) {
+    // ---------- 全量扫描（可选进度回调） ----------
+    suspend fun scanAll(
+        context: Context,
+        onProgress: ((Int) -> Unit)? = null
+    ): List<Song> = withContext(Dispatchers.IO) {
         // 先触发系统媒体扫描，确保文件被索引
         MediaScannerConnection.scanFile(
             context,
             arrayOf(Environment.getExternalStorageDirectory().absolutePath),
             null, null
         )
-        // 触发系统扫描，并挂起等待完成
+        // 挂起等待系统扫描完成
         scanAndWait(context, Environment.getExternalStorageDirectory().absolutePath)
+
         val songs = mutableListOf<Song>()
         val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
@@ -55,6 +59,7 @@ object ScanManager {
                 val path = cursor.getString(dataCol) ?: continue
                 if (!File(path).exists()) continue
                 songs.add(extractSongFromPath(context, path))
+                onProgress?.invoke(songs.size)
             }
         }
         Log.d(TAG, "Full scan found ${songs.size} songs")
@@ -75,15 +80,19 @@ object ScanManager {
         }
     }
 
-    suspend fun scanFolders(context: Context, folderUris: List<Uri>): List<Song> = withContext(Dispatchers.IO) {
+    // ---------- 自定义扫描（可选进度回调） ----------
+    suspend fun scanFolders(
+        context: Context,
+        folderUris: List<Uri>,
+        onProgress: ((Int) -> Unit)? = null
+    ): List<Song> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<Song>()
         for (uri in folderUris) {
             val doc = DocumentFile.fromTreeUri(context, uri) ?: continue
-            scanDocumentTree(context, doc, songs)
+            scanDocumentTree(context, doc, songs, onProgress)
         }
         // 触发系统扫描并等待完成
         scanAndWait(context, Environment.getExternalStorageDirectory().absolutePath)
-
         Log.d(TAG, "Custom scan found ${songs.size} songs")
         songs
     }
@@ -99,30 +108,25 @@ object ScanManager {
 
     private suspend fun mergeAndSave(context: Context, newSongs: List<Song>) {
         val db = AppDatabase.getDatabase(context)
-        val existingSongs = db.songDao().getAllSongsOnce()  // 需要一次性获取所有歌曲，避免 Flow
+        val existingSongs = db.songDao().getAllSongsOnce()
 
-        // 构建旧歌曲路径映射（路径 -> Song）
         val existingMap = mutableMapOf<String, Song>()
         existingSongs.forEach { existingMap[it.path] = it }
 
         val mergedSongs = mutableListOf<Song>()
-
         for (newSong in newSongs) {
             val oldSong = existingMap[newSong.path]
             if (oldSong != null) {
-                // 合并：基础字段用新的，保护自定义字段
                 val merged = oldSong.copy(
                     title = newSong.title,
                     artist = newSong.artist,
                     album = newSong.album,
                     duration = newSong.duration,
                     fileSize = newSong.fileSize,
-                    // 封面处理：如果有自定义封面，保留；否则用新扫描的封面
                     coverPath = if (oldSong.customCoverPath != null) oldSong.coverPath
                     else (newSong.coverPath ?: oldSong.coverPath),
                     lrcPath = if (oldSong.customLrcPath != null) oldSong.lrcPath
-                    else (newSong.lrcPath ?: oldSong.lrcPath),
-                    // isFavorite, customCoverPath, customLrcPath, addedDate 保持旧值
+                    else (newSong.lrcPath ?: oldSong.lrcPath)
                 )
                 mergedSongs.add(merged)
             } else {
@@ -142,7 +146,7 @@ object ScanManager {
         Log.d(TAG, "Incremental scan merged ${mergedSongs.size} songs")
     }
 
-    // 辅助：从文件路径提取歌曲信息（全盘扫描用）
+    // 辅助：从文件路径提取歌曲信息
     private fun extractSongFromPath(context: Context, path: String): Song {
         val retriever = MediaMetadataRetriever()
         var title = "未知歌曲"; var artist = "未知艺术家"; var album = "未知专辑"
@@ -172,7 +176,7 @@ object ScanManager {
         )
     }
 
-    // ---------- 自定义扫描增强：支持同目录歌词和封面 ----------
+    // ---------- 自定义扫描增强（支持同目录歌词和封面） ----------
     private fun extractSongFromUri(
         context: Context,
         uri: Uri,
@@ -237,6 +241,7 @@ object ScanManager {
                     lrcPath = lrcDest.absolutePath
                 }
             }
+
             val title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
                 ?: audioName.ifEmpty { "未知歌曲" }
             val artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: "未知艺术家"
@@ -258,16 +263,21 @@ object ScanManager {
         }
     }
 
-    private fun scanDocumentTree(context: Context, directory: DocumentFile, result: MutableList<Song>) {
+    private fun scanDocumentTree(
+        context: Context,
+        directory: DocumentFile,
+        result: MutableList<Song>,
+        onProgress: ((Int) -> Unit)? = null
+    ) {
         for (file in directory.listFiles()) {
             if (file.isDirectory) {
-                scanDocumentTree(context, file, result)
+                scanDocumentTree(context, file, result, onProgress)
             } else if (file.isFile) {
                 val name = file.name ?: continue
                 if (name.endsWith(".mp3", true) || name.endsWith(".flac", true) ||
                     name.endsWith(".wav", true) || name.endsWith(".aac", true) || name.endsWith(".ogg", true)) {
-                    extractSongFromUri(context, file.uri, directory, result)   // 传入父文件夹 directory
-                    // 删除这里的 MediaScannerConnection.scanFile 调用
+                    extractSongFromUri(context, file.uri, directory, result)
+                    onProgress?.invoke(result.size)
                 }
             }
         }
@@ -430,7 +440,7 @@ object ScanManager {
         if (!coverDir.exists()) coverDir.mkdirs()
         val coverFile = File(coverDir, "${key}.jpg")
         coverFile.writeBytes(data)
-        Log.d(TAG, "Cover saved: ${coverFile.absolutePath}")
+//        Log.d(TAG, "Cover saved: ${coverFile.absolutePath}")
         return coverFile.absolutePath
     }
 

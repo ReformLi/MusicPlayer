@@ -15,6 +15,7 @@ import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.databinding.FragmentScanResultBinding
 import com.hpu.musicplayer.databinding.ItemScanFolderBinding
 import com.hpu.musicplayer.utils.ScanManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -23,11 +24,10 @@ class ScanResultFragment : Fragment() {
     private var _binding: FragmentScanResultBinding? = null
     private val binding get() = _binding!!
 
-    // 外部传入扫描结果或扫描模式
     private var scanAllRequested = false
     private var customFolderUris: List<Uri>? = null
     private val songs = mutableListOf<Song>()
-    private val folderMap = mutableMapOf<String, MutableList<Song>>() // 目录路径 -> 歌曲列表
+    private val folderMap = mutableMapOf<String, MutableList<Song>>()
     private val selectedFolders = mutableSetOf<String>()
     private lateinit var adapter: FolderAdapter
 
@@ -49,6 +49,8 @@ class ScanResultFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
+        // 初始化 adapter 和 RecyclerView
         adapter = FolderAdapter(folderMap, selectedFolders) { folder ->
             if (selectedFolders.contains(folder)) selectedFolders.remove(folder)
             else selectedFolders.add(folder)
@@ -57,44 +59,67 @@ class ScanResultFragment : Fragment() {
         binding.rvFolders.adapter = adapter
         binding.rvFolders.layoutManager = LinearLayoutManager(requireContext())
 
+        // 显示加载提示，禁用按钮
+        binding.loadingContainer.visibility = View.VISIBLE
+        binding.tvScanning.text = "正在扫描，已发现 0 首歌曲..."
+        binding.btnAddSelected.isEnabled = false
+
+        // 启动扫描，传入进度回调
+        lifecycleScope.launch {
+            try {
+                val result = if (scanAllRequested) {
+                    ScanManager.scanAll(requireContext()) { count ->
+                        // 切回主线程更新UI
+                        lifecycleScope.launch(Dispatchers.Main) {
+                            binding.tvScanning.text = "正在扫描，已发现 $count 首歌曲..."
+                        }
+                    }
+                } else {
+                    ScanManager.scanFolders(requireContext(), customFolderUris ?: emptyList()) { count ->
+                        lifecycleScope.launch(Dispatchers.Main) {
+                            binding.tvScanning.text = "正在扫描，已发现 $count 首歌曲..."
+                        }
+                    }
+                }
+
+                songs.clear()
+                songs.addAll(result)
+
+                // 按目录分组
+                folderMap.clear()
+                for (song in songs) {
+                    val dir = getDirectoryName(song.path)
+                    folderMap.getOrPut(dir) { mutableListOf() }.add(song)
+                }
+
+                // 更新摘要和列表
+                binding.tvScanSummary.text = "共扫描到 ${songs.size} 首歌曲，分布在 ${folderMap.size} 个目录中"
+                adapter.updateData(folderMap)
+            } catch (e: Exception) {
+                Toast.makeText(requireContext(), "扫描失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                binding.loadingContainer.visibility = View.GONE
+                binding.btnAddSelected.isEnabled = true
+            }
+        }
+
+        // 添加按钮点击事件
         binding.btnAddSelected.setOnClickListener {
             if (selectedFolders.isEmpty()) {
                 Toast.makeText(requireContext(), "请至少选择一个目录", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            // 收集选中的歌曲
             val selectedSongs = mutableListOf<Song>()
             for (folder in selectedFolders) {
                 folderMap[folder]?.let { selectedSongs.addAll(it) }
             }
-            // 全量更新数据库
             lifecycleScope.launch {
                 val db = AppDatabase.Companion.getDatabase(requireContext())
                 db.songDao().deleteAll()
                 db.songDao().insertAll(selectedSongs)
                 Toast.makeText(requireContext(), "已添加 ${selectedSongs.size} 首歌曲", Toast.LENGTH_SHORT).show()
-                // 返回上一页
                 parentFragmentManager.popBackStack()
             }
-        }
-
-        // 执行扫描
-        lifecycleScope.launch {
-            val result = if (scanAllRequested) {
-                ScanManager.scanAll(requireContext())
-            } else {
-                ScanManager.scanFolders(requireContext(), customFolderUris ?: emptyList())
-            }
-            songs.clear()
-            songs.addAll(result)
-            // 按目录分组
-            folderMap.clear()
-            for (song in songs) {
-                val dir = getDirectoryName(song.path)
-                folderMap.getOrPut(dir) { mutableListOf() }.add(song)
-            }
-            binding.tvScanSummary.text = "共扫描到 ${songs.size} 首歌曲，分布在 ${folderMap.size} 个目录中"
-            adapter.updateData(folderMap)
         }
     }
 
@@ -118,9 +143,7 @@ class ScanResultFragment : Fragment() {
                     }
                     return display
                 }
-            } catch (e: Exception) {
-                // 出错时返回默认
-            }
+            } catch (_: Exception) {}
             return "自定义文件夹"
         }
         // 普通文件路径（全盘扫描）

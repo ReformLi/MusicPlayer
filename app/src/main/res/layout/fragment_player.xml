@@ -38,53 +38,67 @@
     </androidx.cardview.widget.CardView>
 
     <!-- 歌曲信息容器（8% 高度） -->
-    <LinearLayout
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/songInfoContainer"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:gravity="center"
-        android:orientation="vertical"
         app:layout_constraintHeight_percent="0.10"
         app:layout_constraintTop_toBottomOf="@id/cardAlbum"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <TextView
-            android:id="@+id/tvSongTitle"
+        <!-- 包裹标题和艺术家的垂直容器 -->
+        <LinearLayout
+            android:id="@+id/llSongInfo"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:gravity="center"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:text="歌曲标题"
-            android:textColor="?attr/colorOnBackground"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            tools:text="歌曲标题" />
+            android:orientation="vertical"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toStartOf="@id/tvTimer">
 
-        <TextView
-            android:id="@+id/tvSongArtist"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
-            android:gravity="center"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:text="艺术家"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:textSize="16sp"
-            tools:text="艺术家" />
+            <TextView
+                android:id="@+id/tvSongTitle"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="start"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="歌曲标题"
+                android:textColor="?attr/colorOnBackground"
+                android:textSize="20sp"
+                android:textStyle="bold"
+                tools:text="歌曲标题" />
 
+            <TextView
+                android:id="@+id/tvSongArtist"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="2dp"
+                android:gravity="start"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="艺术家"
+                android:textColor="?attr/colorOnSurfaceVariant"
+                android:textSize="16sp"
+                tools:text="艺术家" />
+        </LinearLayout>
+
+        <!-- 倒计时文本，默认隐藏，出现在右侧 -->
         <TextView
             android:id="@+id/tvTimer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginStart="8dp"
             android:textColor="@color/accent_orange"
             android:textSize="14sp"
             android:visibility="gone"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"
             tools:text="⏳ 15:00" />
-    </LinearLayout>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
     <!-- 歌词区域（20% 高度） -->
     <FrameLayout
