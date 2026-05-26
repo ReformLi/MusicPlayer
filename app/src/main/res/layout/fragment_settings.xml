@@ -283,7 +283,7 @@
                         android:layout_height="24dp"
                         android:layout_marginStart="16dp"
                         android:src="@drawable/ic_chevron_right"
-                        android:tint="?attr/colorOnSurfaceVariant" />
+                        app:tint="?attr/colorOnSurfaceVariant" />
 
                 </LinearLayout>
 
@@ -339,7 +339,7 @@
                         android:layout_height="24dp"
                         android:layout_marginStart="16dp"
                         android:src="@drawable/ic_chevron_right"
-                        android:tint="?attr/colorOnSurfaceVariant" />
+                        app:tint="?attr/colorOnSurfaceVariant" />
 
                 </LinearLayout>
 
@@ -406,7 +406,7 @@
                         android:layout_height="24dp"
                         android:layout_marginStart="16dp"
                         android:src="@drawable/ic_chevron_right"
-                        android:tint="@color/accent_red" />
+                        app:tint="@color/accent_red" />
 
                 </LinearLayout>
 
@@ -473,7 +473,7 @@
                         android:layout_height="24dp"
                         android:layout_marginStart="16dp"
                         android:src="@drawable/ic_chevron_right"
-                        android:tint="@color/accent_red" />
+                        app:tint="@color/accent_red" />
 
                 </LinearLayout>
 
