@@ -2,7 +2,10 @@ package com.hpu.musicplayer.utils
 
 import android.content.Context
 import android.media.MediaMetadataRetriever
+import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Build
+import android.os.Environment
 import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Log
@@ -10,8 +13,11 @@ import androidx.documentfile.provider.DocumentFile
 import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.data.Song
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 object ScanManager {
 
@@ -19,8 +25,20 @@ object ScanManager {
 
     // ---------- 全量扫描（保留旧逻辑，用于完全重建） ----------
     suspend fun scanAll(context: Context): List<Song> = withContext(Dispatchers.IO) {
+        // 先触发系统媒体扫描，确保文件被索引
+        MediaScannerConnection.scanFile(
+            context,
+            arrayOf(Environment.getExternalStorageDirectory().absolutePath),
+            null, null
+        )
+        // 触发系统扫描，并挂起等待完成
+        scanAndWait(context, Environment.getExternalStorageDirectory().absolutePath)
         val songs = mutableListOf<Song>()
-        val uri = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
+        } else {
+            MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+        }
         val projection = arrayOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
@@ -43,12 +61,29 @@ object ScanManager {
         songs
     }
 
+    private suspend fun scanAndWait(context: Context, path: String) {
+        suspendCancellableCoroutine<Unit> { continuation ->
+            MediaScannerConnection.scanFile(
+                context,
+                arrayOf(path),
+                null
+            ) { _, _ ->
+                if (continuation.isActive) {
+                    continuation.resume(Unit)
+                }
+            }
+        }
+    }
+
     suspend fun scanFolders(context: Context, folderUris: List<Uri>): List<Song> = withContext(Dispatchers.IO) {
         val songs = mutableListOf<Song>()
         for (uri in folderUris) {
             val doc = DocumentFile.fromTreeUri(context, uri) ?: continue
             scanDocumentTree(context, doc, songs)
         }
+        // 触发系统扫描并等待完成
+        scanAndWait(context, Environment.getExternalStorageDirectory().absolutePath)
+
         Log.d(TAG, "Custom scan found ${songs.size} songs")
         songs
     }
@@ -232,6 +267,7 @@ object ScanManager {
                 if (name.endsWith(".mp3", true) || name.endsWith(".flac", true) ||
                     name.endsWith(".wav", true) || name.endsWith(".aac", true) || name.endsWith(".ogg", true)) {
                     extractSongFromUri(context, file.uri, directory, result)   // 传入父文件夹 directory
+                    // 删除这里的 MediaScannerConnection.scanFile 调用
                 }
             }
         }

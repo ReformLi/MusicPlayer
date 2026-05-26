@@ -7,6 +7,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
+import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
@@ -152,7 +153,15 @@ class MusicService : Service() {
             mediaPlayer?.start()
             updateState(song, PlaybackState.PLAYING)
             if (SettingsPreferences.isNotificationControlEnabled(this@MusicService)) {
-                startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        buildNotification(song, PlaybackState.PLAYING),
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
+                }
             }
             startProgressUpdates()
             CoroutineScope(Dispatchers.IO).launch { saveCurrentState() }
@@ -164,13 +173,20 @@ class MusicService : Service() {
         val mp = MediaPlayer()
         try {
             if (song.path.startsWith("content://")) {
-                val afd = contentResolver.openAssetFileDescriptor(Uri.parse(song.path), "r")
-                if (afd != null) {
-                    mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                    afd.close()
-                } else {
-                    Log.e(TAG, "Cannot open content URI: ${song.path}")
-                    showToast("无法打开文件")
+                val uri = Uri.parse(song.path)
+                try {
+                    // 重新获取权限（防止持久化失效）
+                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    val afd = contentResolver.openAssetFileDescriptor(uri, "r")
+                    if (afd != null) {
+                        mp.setDataSource(afd.fileDescriptor)  // 不指定 offset 和 length
+                        afd.close()
+                    } else {
+                        showToast("无法打开文件，请重新选择文件夹")
+                        return
+                    }
+                } catch (e: SecurityException) {
+                    showToast("文件权限失效，请重新添加文件夹")
                     return
                 }
             } else {
@@ -184,7 +200,15 @@ class MusicService : Service() {
             updateState(song, PlaybackState.PLAYING)
             startProgressUpdates()
             if (SettingsPreferences.isNotificationControlEnabled(this@MusicService)) {
-                startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        buildNotification(song, PlaybackState.PLAYING),
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                    )
+                } else {
+                    startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
+                }
             }
 
             // 记录播放历史
@@ -218,7 +242,15 @@ class MusicService : Service() {
     fun pause() {
         mediaPlayer?.pause()
         updateState(currentSong, PlaybackState.PAUSED)
-        startForeground(NOTIFICATION_ID, buildNotification(currentSong, PlaybackState.PAUSED))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(currentSong, PlaybackState.PLAYING),
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification(currentSong, PlaybackState.PLAYING))
+        }
         CoroutineScope(Dispatchers.IO).launch { saveCurrentState() }
     }
 
@@ -226,7 +258,15 @@ class MusicService : Service() {
         mediaPlayer?.start()
         updateState(currentSong, PlaybackState.PLAYING)
         if (SettingsPreferences.isNotificationControlEnabled(this@MusicService)) {
-            startForeground(NOTIFICATION_ID, buildNotification(currentSong, PlaybackState.PLAYING))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(currentSong, PlaybackState.PLAYING),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification(currentSong, PlaybackState.PLAYING))
+            }
         }
     }
 
@@ -383,7 +423,15 @@ class MusicService : Service() {
             mediaPlayer = mp
             currentSong = song
             updateState(song, PlaybackState.PAUSED)
-            startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PAUSED))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    buildNotification(song, PlaybackState.PLAYING),
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification(song, PlaybackState.PLAYING))
+            }
         } catch (e: Exception) {
             Log.e(TAG, "prepareSong error: ${e.message}", e)
             mp.release()
