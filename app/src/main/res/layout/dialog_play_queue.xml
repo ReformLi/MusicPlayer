@@ -85,7 +85,7 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:src="@drawable/ic_mode_list_loop"
-                            android:tint="?attr/colorOnSurface"
+                            app:tint="?attr/colorOnSurface"
                             android:contentDescription="模式" />
 
                         <TextView
@@ -131,7 +131,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
                     android:text="关闭"
-                    android:textColor="?attr/colorOnPrimary"
+                    android:textColor="?attr/colorOnSurface"
                     app:cornerRadius="20dp" />
 
             </LinearLayout>

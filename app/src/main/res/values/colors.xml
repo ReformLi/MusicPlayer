@@ -49,6 +49,9 @@
     <color name="warning_orange">#FFF57C00</color>
     <color name="error_red">#FFD32F2F</color>
 
+    <!-- Material green colors -->
+    <color name="material_green_200">#FFA5D6A7</color>
+
     <!-- Gradient colors -->
     <color name="gradient_start">#FF667eea</color>
     <color name="gradient_end">#FF764ba2</color>

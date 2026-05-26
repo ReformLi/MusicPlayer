@@ -22,6 +22,7 @@ import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.data.dao.PlayHistoryDao
 import com.hpu.musicplayer.databinding.FragmentHistoryBinding
 import com.hpu.musicplayer.ui.adapter.HistoryAdapter
+import com.hpu.musicplayer.ui.dialog.SongInfoDialogFragment
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import kotlinx.coroutines.launch
 import okhttp3.internal.concurrent.formatDuration
@@ -75,19 +76,7 @@ class HistoryFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         val adapter = HistoryAdapter { history ->
-            val song = Song(
-                id = history.songId,
-                title = history.title,
-                artist = history.artist,
-                album = history.album,
-                duration = history.duration,
-                path = history.path,
-                coverPath = history.coverPath,
-                lrcPath = history.lrcPath
-            )
-//            playerViewModel.play(song)
-            // 不播放，仅显示信息（可选）
-            showHistoryInfo(history)
+            showSongInfoDialog(history)
         }
 
         binding.rvHistory.layoutManager = LinearLayoutManager(requireContext())
@@ -135,23 +124,11 @@ class HistoryFragment : Fragment() {
 //        }
     }
 
-    private fun showHistoryInfo(history: PlayHistory) {
-        val message = buildString {
-            append("标题: ${history.title}\n")
-            append("艺术家: ${history.artist}\n")
-            append("专辑: ${history.album}\n")
-            append("时长: ${formatDuration(history.duration)}\n")
-            append("路径: ${history.path}\n")
-            append("上次播放: ${
-                SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(
-                    Date(history.playedAt)
-            )}")
+    private fun showSongInfoDialog(history: PlayHistory) {
+        val dialog = SongInfoDialogFragment.newInstance().apply {
+            setHistory(history)
         }
-        AlertDialog.Builder(requireContext())
-            .setTitle("歌曲信息")
-            .setMessage(message)
-            .setPositiveButton("确定", null)
-            .show()
+        dialog.show(parentFragmentManager, "SongInfoDialog")
     }
 
     override fun onDestroyView() {

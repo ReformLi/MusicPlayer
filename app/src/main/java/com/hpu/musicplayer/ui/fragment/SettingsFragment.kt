@@ -76,6 +76,8 @@ class SettingsFragment : Fragment() {
                 .setNegativeButton("取消", null)
                 .show()
         }
+
+        setupExitApp()
     }
 
     override fun onResume() {
@@ -247,6 +249,31 @@ class SettingsFragment : Fragment() {
 
             Toast.makeText(requireContext(), "歌曲库已重置，请重新扫描歌曲", Toast.LENGTH_LONG).show()
         }
+    }
+
+    private fun setupExitApp() {
+        binding.layoutExitApp.setOnClickListener {
+            showExitConfirmationDialog()
+        }
+    }
+
+    private fun showExitConfirmationDialog() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("退出应用")
+            .setMessage("确定要退出应用吗？")
+            .setPositiveButton("确定") { _, _ -> exitApp() }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun exitApp() {
+        // 停止音乐服务
+        MusicService.getInstance()?.stopPlayback()
+        val intent = Intent(requireContext(), MusicService::class.java)
+        requireContext().stopService(intent)
+
+        // 退出应用
+        requireActivity().finishAffinity()
     }
 
     override fun onDestroyView() {
