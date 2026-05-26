@@ -84,6 +84,10 @@ class MainActivity : AppCompatActivity() {
                         NavOptions.Builder()
                             .setPopUpTo(R.id.songsFragment, false)
                             .setLaunchSingleTop(true)
+                            .setEnterAnim(R.anim.slide_in_right)
+                            .setExitAnim(R.anim.slide_out_left)
+                            .setPopEnterAnim(R.anim.slide_in_left)
+                            .setPopExitAnim(R.anim.slide_out_right)
                             .build()
                     )
                     binding.drawerLayout.closeDrawers()
@@ -91,7 +95,14 @@ class MainActivity : AppCompatActivity() {
                 }
                 // 收藏、音乐库、历史：直接导航，不清空栈，自动显示返回箭头
                 R.id.favoritesFragment, R.id.musicLibraryFragment, R.id.historyFragment -> {
-                    navController.navigate(menuItem.itemId)
+                    navController.navigate(menuItem.itemId, null,
+                        NavOptions.Builder()
+                            .setEnterAnim(R.anim.slide_in_right)
+                            .setExitAnim(R.anim.slide_out_left)
+                            .setPopEnterAnim(R.anim.slide_in_left)
+                            .setPopExitAnim(R.anim.slide_out_right)
+                            .build()
+                    )
                     binding.drawerLayout.closeDrawers()
                     true
                 }
@@ -173,7 +184,14 @@ class MainActivity : AppCompatActivity() {
         binding.miniPlayer.root.setOnClickListener {
             val currentSongId = playerViewModel.playerState.value.currentSong?.id ?: return@setOnClickListener
             val bundle = Bundle().apply { putLong("songId", currentSongId) }
-            navController.navigate(R.id.playerFragment, bundle)
+            navController.navigate(R.id.playerFragment, bundle,
+                NavOptions.Builder()
+                    .setEnterAnim(R.anim.slide_in_up)
+                    .setExitAnim(R.anim.fade_out)
+                    .setPopEnterAnim(R.anim.fade_in)
+                    .setPopExitAnim(R.anim.slide_out_down)
+                    .build()
+            )
         }
 
         binding.miniPlayer.miniPlayPause.setOnClickListener {
@@ -251,6 +269,10 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             PlayMode.LIST_LOOP
         }
+
+        // 如果已经有歌曲在播放/暂停，则不要恢复（保持当前状态）
+        if (MusicService.playerState.value.currentSong != null) return
+
         val service = MusicService.getInstance() ?: return
         service.setPlayMode(mode)
 

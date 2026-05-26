@@ -1,5 +1,6 @@
 package com.hpu.musicplayer.ui.dialog
 
+import android.app.Dialog
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -23,6 +24,12 @@ class CacheManagementDialogFragment : DialogFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setStyle(STYLE_NORMAL, R.style.QueueDialogTheme)   // 复用之前的透明主题
+    }
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        val dialog = super.onCreateDialog(savedInstanceState)
+        dialog.window?.attributes?.windowAnimations = R.style.DialogAnimation
+        return dialog
     }
 
     override fun onCreateView(

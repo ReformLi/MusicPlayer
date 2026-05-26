@@ -245,6 +245,7 @@ class MusicService : Service() {
         mediaPlayer?.start()
         updateState(currentSong, PlaybackState.PLAYING)
         updateNotificationAndForeground(currentSong, PlaybackState.PLAYING)
+        startProgressUpdates()   // 添加这行，确保进度流运行
     }
 
     fun togglePlayPause() {
@@ -285,7 +286,7 @@ class MusicService : Service() {
                         duration = mp.duration.toLong()
                     )
                 }
-                delay(300)
+                delay(100)// 可改为 80ms，每秒约 12.5 次更新，非常丝滑
             }
         }
     }
@@ -308,16 +309,25 @@ class MusicService : Service() {
 
     fun playNext() {
         if (playlist.isEmpty()) return
+
         when (playMode) {
             PlayMode.LIST_LOOP -> {
                 if (currentIndex < playlist.size - 1) playAtIndex(currentIndex + 1)
                 else playAtIndex(0)
             }
-            PlayMode.SINGLE_LOOP -> play(playlist[currentIndex])
+            PlayMode.SINGLE_LOOP -> {
+                // 安全播放当前歌曲（如果当前歌曲存在），否则播放第一首
+                currentSong?.let { play(it) } ?: playAtIndex(0)
+            }
             PlayMode.RANDOM -> {
-                if (playlist.size == 1) { play(playlist[0]); return }
+                if (playlist.size == 1) {
+                    play(playlist[0])
+                    return
+                }
                 var randomIndex: Int
-                do { randomIndex = Random.nextInt(playlist.size) } while (randomIndex == currentIndex)
+                do {
+                    randomIndex = Random.nextInt(playlist.size)
+                } while (randomIndex == currentIndex)
                 playAtIndex(randomIndex)
             }
         }
@@ -326,9 +336,12 @@ class MusicService : Service() {
     fun playPrevious() {
         if (playlist.isEmpty()) return
         when (playMode) {
-            PlayMode.LIST_LOOP, PlayMode.SINGLE_LOOP -> {
+            PlayMode.LIST_LOOP -> {
                 if (currentIndex > 0) playAtIndex(currentIndex - 1)
                 else playAtIndex(playlist.size - 1)
+            }
+            PlayMode.SINGLE_LOOP -> {
+                currentSong?.let { play(it) } ?: playAtIndex(0)
             }
             PlayMode.RANDOM -> {
                 var randomIndex: Int
@@ -379,6 +392,14 @@ class MusicService : Service() {
         }
         _playMode.value = playMode
         Log.d(TAG, "PlayMode changed to: $playMode")
+        // 显示提示
+        val modeName = when (playMode) {
+            PlayMode.LIST_LOOP -> "列表循环"
+            PlayMode.RANDOM -> "随机播放"
+            PlayMode.SINGLE_LOOP -> "单曲循环"
+            else -> ""
+        }
+        showToast("$modeName 模式")
     }
 
     fun setPlayMode(mode: PlayMode) {
@@ -418,10 +439,27 @@ class MusicService : Service() {
             }
             mp.prepare()
             mp.seekTo(startPosition.toInt())
+            mp.setOnCompletionListener { playNext() }
             mediaPlayer = mp
             currentSong = song
-            updateState(song, PlaybackState.PAUSED)
+            currentIndex = playlist.indexOfFirst { it.id == song.id }
+
+            // 直接设置状态，使用传入的 startPosition 作为进度
+            _playerState.value = PlayerData(
+                currentSong = song,
+                state = PlaybackState.PAUSED,
+                progress = startPosition,
+                duration = song.duration
+            )
+            // 同步更新 MediaSession
+            mediaSession.setPlaybackState(PlaybackStateCompat.Builder()
+                .setState(PlaybackStateCompat.STATE_PAUSED, startPosition, 1f)
+                .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE or
+                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
+                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
+                .build())
             updateNotificationAndForeground(song, PlaybackState.PAUSED)
+            progressJob?.cancel()
         } catch (e: Exception) {
             Log.e(TAG, "prepareSong error: ${e.message}", e)
             mp.release()

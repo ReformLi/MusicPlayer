@@ -82,6 +82,14 @@ class HistoryFragment : Fragment() {
         binding.rvHistory.layoutManager = LinearLayoutManager(requireContext())
         binding.rvHistory.adapter = adapter
 
+        // 添加平滑的 item 动画
+        binding.rvHistory.itemAnimator = androidx.recyclerview.widget.DefaultItemAnimator().apply {
+            addDuration = 300
+            removeDuration = 300
+            moveDuration = 300
+            changeDuration = 300
+        }
+
         val historyDao = AppDatabase.Companion.getDatabase(requireContext()).playHistoryDao()
         lifecycleScope.launch {
             historyDao.getAllHistory().collect { list ->

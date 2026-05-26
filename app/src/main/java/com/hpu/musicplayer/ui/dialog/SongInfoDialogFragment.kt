@@ -1,5 +1,6 @@
 package com.hpu.musicplayer.ui.dialog
 
+import android.app.Dialog
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
@@ -27,6 +28,12 @@ class SongInfoDialogFragment : DialogFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setStyle(STYLE_NORMAL, R.style.QueueDialogTheme)
+    }
+
+    override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
+        val dialog = super.onCreateDialog(savedInstanceState)
+        dialog.window?.attributes?.windowAnimations = R.style.DialogAnimation
+        return dialog
     }
 
     override fun onCreateView(

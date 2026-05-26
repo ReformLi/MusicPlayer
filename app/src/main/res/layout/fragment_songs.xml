@@ -55,7 +55,7 @@
                     android:layout_width="96dp"
                     android:layout_height="96dp"
                     android:src="@drawable/ic_music_note"
-                    android:tint="?attr/colorOnSurfaceVariant"
+                    app:tint="?attr/colorOnSurfaceVariant"
                     android:alpha="0.6" />
 
                 <TextView

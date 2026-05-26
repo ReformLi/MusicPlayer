@@ -86,6 +86,7 @@ class SongsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // 1. 先创建 adapter
         adapter = SongAdapter(
             onItemClick = { song ->
 //                Toast.makeText(requireContext(), "点击了: ${song.title}", Toast.LENGTH_SHORT).show()
@@ -101,6 +102,7 @@ class SongsFragment : Fragment() {
         binding.recyclerViewSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerViewSongs.adapter = adapter
 
+        // 2. 监听数据库歌曲列表
         val songDao = AppDatabase.Companion.getDatabase(requireContext()).songDao()
         viewLifecycleOwner.lifecycleScope.launch {
             songDao.getAllSongs().collect { songs ->
@@ -108,6 +110,14 @@ class SongsFragment : Fragment() {
                 adapter.submitList(songs)
                 playerViewModel.setPlaylist(songs)
                 binding.emptyView.visibility = if (songs.isEmpty()) View.VISIBLE else View.GONE
+            }
+        }
+
+        // 3. 监听当前播放歌曲变化，更新列表高亮（此时 adapter 已初始化）
+        viewLifecycleOwner.lifecycleScope.launch {
+            playerViewModel.playerState.collect { data ->
+                val songId = data.currentSong?.id ?: -1
+                adapter.updateCurrentSongId(songId)
             }
         }
 

@@ -67,6 +67,13 @@
         <item name="textAppearanceLabelLarge">@style/TextAppearance.HpuMusicPlayer.LabelLarge</item>
         <item name="textAppearanceLabelMedium">@style/TextAppearance.HpuMusicPlayer.LabelMedium</item>
         <item name="textAppearanceLabelSmall">@style/TextAppearance.HpuMusicPlayer.LabelSmall</item>
+
+        <!-- Activity transitions -->
+        <item name="android:windowActivityTransitions">true</item>
+        <item name="android:windowEnterTransition">@android:transition/fade</item>
+        <item name="android:windowExitTransition">@android:transition/fade</item>
+        <item name="android:windowSharedElementEnterTransition">@android:transition/move</item>
+        <item name="android:windowSharedElementExitTransition">@android:transition/move</item>
     </style>
 
     <!-- Shape appearances -->
@@ -96,6 +103,12 @@
         <item name="android:colorBackground">?attr/colorSurface</item>
         <item name="android:textColorPrimary">?attr/colorOnSurface</item>
         <item name="android:textColorSecondary">?attr/colorOnSurfaceVariant</item>
+    </style>
+
+    <!-- Dialog Animation Style -->
+    <style name="DialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/scale_in</item>
+        <item name="android:windowExitAnimation">@anim/fade_out</item>
     </style>
 
 

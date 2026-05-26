@@ -160,10 +160,13 @@ class PlayerFragment : Fragment() {
 
             // 进度条（仅在非拖动时更新）
             if (!binding.seekBar.isPressed) {
-                val max = data.duration.toFloat()
-                val pos = data.progress.toFloat().coerceAtMost(max)   // 进度不能超过总时长
+                val max = data.duration.coerceAtLeast(1L).toFloat()
+                val pos = data.progress.coerceIn(0L, data.duration).toFloat()
                 binding.seekBar.valueTo = max
-                binding.seekBar.value = pos
+                // 使用 post 确保布局已应用 valueTo 后再设置 value
+                binding.seekBar.post {
+                    binding.seekBar.value = pos
+                }
             }
 
             // 播放/暂停图标
@@ -221,6 +224,10 @@ class PlayerFragment : Fragment() {
     }
 
     private fun setupControls() {
+        binding.seekBar.valueFrom = 0f
+//        binding.seekBar.valueTo = 100f   // 仅用于初始化，播放后会立即更新
+//        binding.seekBar.value = 0f
+
         binding.btnPlayPause.setOnClickListener {
             playerViewModel.togglePlayPause()
         }
