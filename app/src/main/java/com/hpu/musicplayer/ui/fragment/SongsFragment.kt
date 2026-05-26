@@ -10,7 +10,10 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
-import androidx.appcompat.widget.SearchView
+import android.text.Editable
+import android.text.TextWatcher
+import android.widget.EditText
+import android.widget.ImageView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -125,11 +128,48 @@ class SongsFragment : Fragment() {
     }
 
     private fun setupSearchView() {
-        binding.searchView.setOnQueryTextListener(object : SearchView.OnQueryTextListener {
-            override fun onQueryTextSubmit(query: String?): Boolean = false
+        val searchEditText = binding.root.findViewById<EditText>(R.id.searchEditText)
+        val clearButton = binding.root.findViewById<ImageView>(R.id.ivClear)
 
-            override fun onQueryTextChange(newText: String?): Boolean {
-                val query = newText.orEmpty().trim()
+        // 设置初始hint文本
+        searchEditText.hint = "搜索本地音乐"
+
+        // 搜索框焦点变化监听
+        searchEditText.setOnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                // 获得焦点时，如果内容为空，显示详细hint
+                if (searchEditText.text.isEmpty()) {
+                    searchEditText.hint = "搜索本地歌曲、歌手"
+                }
+                // 有焦点时就显示清除按钮
+                clearButton.visibility = View.VISIBLE
+            } else {
+                // 失去焦点时，显示默认hint
+                searchEditText.hint = "搜索本地音乐"
+                clearButton.visibility = View.GONE
+            }
+        }
+
+        searchEditText.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
+                val query = s?.toString()?.trim() ?: ""
+
+                // 根据是否有焦点来设置不同的hint文本
+                if (searchEditText.hasFocus()) {
+                    if (query.isEmpty()) {
+                        searchEditText.hint = "搜索本地歌曲、歌手"
+                    }
+                }
+
+                // 控制清除按钮的显示/隐藏
+                if (searchEditText.hasFocus()) {
+                    clearButton.visibility = View.VISIBLE
+                } else {
+                    clearButton.visibility = View.GONE
+                }
+
                 val filtered = if (query.isEmpty()) allSongs
                 else allSongs.filter { song ->
                     song.title.contains(query, ignoreCase = true) ||
@@ -137,9 +177,35 @@ class SongsFragment : Fragment() {
                             song.album.contains(query, ignoreCase = true)
                 }
                 adapter.submitList(filtered)
-                return true
             }
+
+            override fun afterTextChanged(s: Editable?) {}
         })
+
+        // 清除按钮点击事件
+        clearButton.setOnClickListener {
+            if (searchEditText.text.isNotEmpty()) {
+                // 如果有文字，清空文字
+                searchEditText.setText("")
+                searchEditText.hint = "搜索本地歌曲、歌手"
+                clearButton.visibility = View.GONE
+                searchEditText.requestFocus()
+            } else {
+                // 如果没有文字，失去焦点
+                searchEditText.clearFocus()
+                searchEditText.hint = "搜索本地音乐"
+                clearButton.visibility = View.GONE
+            }
+        }
+
+        // 添加点击监听器使整个搜索框可点击
+        binding.root.findViewById<com.google.android.material.card.MaterialCardView>(R.id.searchCardView)?.setOnClickListener {
+            searchEditText.requestFocus()
+            searchEditText.requestFocusFromTouch()
+        }
+
+        // 点击整个搜索框时获取焦点 - 在布局中已设置android:foreground="?attr/selectableItemBackground"
+        // MaterialCardView本身已经具备点击反馈效果
     }
 
     // ---------- 歌曲操作 ----------

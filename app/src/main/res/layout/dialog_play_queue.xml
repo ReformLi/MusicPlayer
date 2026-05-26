@@ -130,6 +130,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp"
+                    app:backgroundTint="@color/secondary_container"
                     android:text="关闭"
                     android:textColor="?attr/colorOnSurface"
                     app:cornerRadius="20dp" />

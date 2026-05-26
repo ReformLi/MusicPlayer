@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:layout_marginHorizontal="16dp"
-    android:layout_marginVertical="4dp"
+    android:layout_marginVertical="2dp"
     app:cardCornerRadius="12dp"
     app:cardElevation="2dp"
     app:strokeWidth="0dp"
@@ -15,13 +15,13 @@
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:padding="16dp"
+        android:padding="12dp"
         android:background="?attr/selectableItemBackground">
 
         <com.google.android.material.imageview.ShapeableImageView
             android:id="@+id/ivCover"
-            android:layout_width="56dp"
-            android:layout_height="56dp"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
             android:scaleType="centerCrop"
             android:src="@drawable/ic_music_note"
             app:shapeAppearanceOverlay="@style/ShapeAppearance.HpuMusicPlayer.Small"
@@ -31,14 +31,14 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:layout_marginStart="16dp"
+            android:layout_marginStart="12dp"
             android:orientation="vertical">
 
             <TextView
                 android:id="@+id/tvTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.TitleMedium"
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.TitleSmall"
                 android:singleLine="true"
                 android:textColor="?attr/colorOnSurface" />
 
@@ -46,8 +46,8 @@
                 android:id="@+id/tvArtist"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+                android:layout_marginTop="2dp"
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.LabelMedium"
                 android:singleLine="true"
                 android:textColor="?attr/colorOnSurfaceVariant" />
         </LinearLayout>
@@ -56,9 +56,9 @@
             android:id="@+id/tvPlayedAt"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.LabelMedium"
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.LabelSmall"
             android:textColor="?attr/colorOnSurfaceVariant"
-            android:layout_marginStart="8dp" />
+            android:layout_marginStart="4dp" />
 
     </LinearLayout>
 

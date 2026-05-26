@@ -50,13 +50,14 @@ class QueueAdapter(
             holder.binding.tvQueueTitle.setTypeface(null, Typeface.BOLD)
             holder.binding.tvQueueArtist.setTextColor(0xFF1DB954.toInt())
             holder.binding.root.setBackgroundColor(0x22FFFFFF) // 白色半透明背景
-        } else {
-            // 普通歌曲：白色，常规字体，透明背景
-            holder.binding.tvQueueTitle.setTextColor(Color.WHITE)
-            holder.binding.tvQueueTitle.setTypeface(null, Typeface.NORMAL)
-            holder.binding.tvQueueArtist.setTextColor(0xFFAAAAAA.toInt())
-            holder.binding.root.setBackgroundColor(Color.TRANSPARENT)
         }
+//        else {
+//            // 普通歌曲：白色，常规字体，透明背景
+//            holder.binding.tvQueueTitle.setTextColor(Color.WHITE)
+//            holder.binding.tvQueueTitle.setTypeface(null, Typeface.NORMAL)
+//            holder.binding.tvQueueArtist.setTextColor(0xFFAAAAAA.toInt())
+//            holder.binding.root.setBackgroundColor(Color.TRANSPARENT)
+//        }
 
 //        // 封面加载
 //        if (!song.coverPath.isNullOrEmpty()) {

@@ -39,9 +39,9 @@ class QueueDialogAdapter(
         val song = songs[position]
         holder.binding.tvQueueTitle.text = song.title
         holder.binding.tvQueueArtist.text = song.artist
-        holder.binding.tvQueueTitle.setTextColor(
-            if (position == currentIndex) 0xFF1DB954.toInt() else Color.WHITE
-        )
+//        holder.binding.tvQueueTitle.setTextColor(
+//            if (position == currentIndex) 0xFF1DB954.toInt() else Color.WHITE
+//        )
         holder.binding.root.setOnClickListener { onItemClick(position) }
         holder.binding.ivDelete.setOnClickListener { onDeleteClick(position) }
     }

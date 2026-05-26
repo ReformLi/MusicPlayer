@@ -24,11 +24,11 @@
             app:argType="long" />
     </fragment>
 
-    <fragment
-        android:id="@+id/playQueueFragment"
-        android:name="com.hpu.musicplayer.ui.fragment.PlayQueueFragment"
-        android:label="播放队列"
-        tools:layout="@layout/fragment_play_queue" />
+<!--    <fragment-->
+<!--        android:id="@+id/playQueueFragment"-->
+<!--        android:name="com.hpu.musicplayer.ui.fragment.PlayQueueFragment"-->
+<!--        android:label="播放队列"-->
+<!--        tools:layout="@layout/fragment_play_queue" />-->
 
     <fragment
         android:id="@+id/historyFragment"
