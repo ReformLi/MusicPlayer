@@ -41,7 +41,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            app:layout_constraintGuide_percent="0.75" />
+            app:layout_constraintGuide_percent="0.72" />
 
         <!-- 弹框主体 -->
         <com.google.android.material.card.MaterialCardView
@@ -155,12 +155,12 @@
                         style="@style/Widget.Material3.Button.ElevatedButton"
                         android:layout_width="match_parent"
                         android:layout_height="48dp"
-                        android:layout_marginTop="25dp"
+                        android:layout_marginTop="5dp"
                         android:text="关闭"
                         android:textColor="@android:color/black"
                         android:textSize="16sp"
                         app:cornerRadius="16dp"
-                        app:backgroundTint="@color/material_green_200" />
+                        app:backgroundTint="@color/secondary_container" />
                 </LinearLayout>
 
             </LinearLayout>

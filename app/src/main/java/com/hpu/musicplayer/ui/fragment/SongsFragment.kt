@@ -12,8 +12,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import android.text.Editable
 import android.text.TextWatcher
+import android.util.Log
 import android.widget.EditText
 import android.widget.ImageView
+import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -141,11 +143,12 @@ class SongsFragment : Fragment() {
                 if (searchEditText.text.isEmpty()) {
                     searchEditText.hint = "搜索本地歌曲、歌手"
                 }
-                // 有焦点时就显示清除按钮
+                // 有焦点时就显示清除按钮（即使内容为空）
                 clearButton.visibility = View.VISIBLE
             } else {
                 // 失去焦点时，显示默认hint
                 searchEditText.hint = "搜索本地音乐"
+                // 失去焦点时隐藏清除按钮
                 clearButton.visibility = View.GONE
             }
         }
@@ -160,15 +163,14 @@ class SongsFragment : Fragment() {
                 if (searchEditText.hasFocus()) {
                     if (query.isEmpty()) {
                         searchEditText.hint = "搜索本地歌曲、歌手"
+                    } else {
+                        // 有内容时清空hint，避免与文字重叠
+                        searchEditText.hint = ""
                     }
                 }
 
-                // 控制清除按钮的显示/隐藏
-                if (searchEditText.hasFocus()) {
-                    clearButton.visibility = View.VISIBLE
-                } else {
-                    clearButton.visibility = View.GONE
-                }
+                // 控制清除按钮的显示/隐藏：焦点由监听管理，此处不再处理
+                // 保持原有逻辑即可，因为焦点监听已经处理了可见性
 
                 val filtered = if (query.isEmpty()) allSongs
                 else allSongs.filter { song ->
@@ -182,19 +184,23 @@ class SongsFragment : Fragment() {
             override fun afterTextChanged(s: Editable?) {}
         })
 
-        // 清除按钮点击事件
+        // 清除按钮点击事件（新逻辑）
         clearButton.setOnClickListener {
             if (searchEditText.text.isNotEmpty()) {
-                // 如果有文字，清空文字
+                // 有文字：清空文字，保留焦点和清除按钮
                 searchEditText.setText("")
-                searchEditText.hint = "搜索本地歌曲、歌手"
-                clearButton.visibility = View.GONE
-                searchEditText.requestFocus()
+                // 手动恢复hint并确保光标可见
+                if (searchEditText.hasFocus()) {
+                    searchEditText.hint = "搜索本地歌曲、歌手"
+                }
+                // 不清除焦点，不清除按钮，焦点监听已设置可见性，无需再设
             } else {
-                // 如果没有文字，失去焦点
+                // 没有文字：退出搜索状态
                 searchEditText.clearFocus()
-                searchEditText.hint = "搜索本地音乐"
-                clearButton.visibility = View.GONE
+                // 关闭软键盘
+                val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                imm.hideSoftInputFromWindow(searchEditText.windowToken, 0)
+                // 焦点监听会自动将清除按钮隐藏
             }
         }
 
@@ -204,8 +210,20 @@ class SongsFragment : Fragment() {
             searchEditText.requestFocusFromTouch()
         }
 
-        // 点击整个搜索框时获取焦点 - 在布局中已设置android:foreground="?attr/selectableItemBackground"
-        // MaterialCardView本身已经具备点击反馈效果
+        // ===== 新增返回键监听 =====
+        searchEditText.setOnKeyListener { v, keyCode, event ->
+            if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_UP) {
+                // 当搜索框有焦点时，消费返回键事件
+                if (searchEditText.hasFocus()) {
+                    searchEditText.clearFocus()
+                    val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    imm.hideSoftInputFromWindow(searchEditText.windowToken, 0)
+                    // 焦点监听会自动隐藏清除按钮
+                    return@setOnKeyListener true   // 表示事件已被消费
+                }
+            }
+            false   // 未消费，继续传递给 Activity
+        }
     }
 
     // ---------- 歌曲操作 ----------

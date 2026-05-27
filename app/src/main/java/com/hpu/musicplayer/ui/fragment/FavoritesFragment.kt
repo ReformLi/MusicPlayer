@@ -75,45 +75,50 @@ class FavoritesFragment : Fragment() {
         val searchEditText = binding.root.findViewById<EditText>(R.id.searchEditText)
         val clearButton = binding.root.findViewById<ImageView>(R.id.ivClear)
 
-        // 设置初始hint文本
+        // 初始状态：提示文字
         searchEditText.hint = "搜索本地音乐"
 
-        // 搜索框焦点变化监听
+        // ================== 焦点变化监听 ==================
         searchEditText.setOnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
-                // 获得焦点时，如果内容为空，显示详细hint
+                // 获得焦点时，若无文字则切换为详细提示
                 if (searchEditText.text.isEmpty()) {
                     searchEditText.hint = "搜索本地歌曲、歌手"
+                } else {
+                    searchEditText.hint = ""
                 }
-                // 有焦点时就显示清除按钮
+                // 有焦点就显示清除按钮
                 clearButton.visibility = View.VISIBLE
             } else {
-                // 失去焦点时，显示默认hint
+                // 失去焦点：恢复默认提示，隐藏清除按钮
                 searchEditText.hint = "搜索本地音乐"
                 clearButton.visibility = View.GONE
             }
         }
 
+        // ================== 文字变化监听 ==================
         searchEditText.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 val query = s?.toString()?.trim() ?: ""
 
-                // 根据是否有焦点来设置不同的hint文本
+                // 动态调整 hint：焦点内无文字显示长提示，有文字则清空 hint
                 if (searchEditText.hasFocus()) {
                     if (query.isEmpty()) {
                         searchEditText.hint = "搜索本地歌曲、歌手"
+                    } else {
+                        searchEditText.hint = ""
                     }
                 }
 
-                // 控制清除按钮的显示/隐藏
+                // 清除按钮的可见性完全由焦点监听控制，此处不重复设置
+                // 但为了安全性，确保在有焦点时按钮始终可见
                 if (searchEditText.hasFocus()) {
                     clearButton.visibility = View.VISIBLE
-                } else {
-                    clearButton.visibility = View.GONE
                 }
 
+                // 过滤并显示歌曲
                 val filtered = if (query.isEmpty()) allSongs
                 else allSongs.filter {
                     it.title.contains(query, true) ||
@@ -126,20 +131,40 @@ class FavoritesFragment : Fragment() {
             override fun afterTextChanged(s: Editable?) {}
         })
 
-        // 清除按钮点击事件
+        // ================== 清除按钮点击逻辑 ==================
         clearButton.setOnClickListener {
             if (searchEditText.text.isNotEmpty()) {
-                // 如果有文字，清空文字
+                // 情况1：输入框有文字 → 清空文字，保留焦点和清除按钮
                 searchEditText.setText("")
+                // 手动设置 hint（因为 setText 不会自动触发 focus 相关 hint 变化）
                 searchEditText.hint = "搜索本地歌曲、歌手"
-                clearButton.visibility = View.GONE
+                // 保持清除按钮可见（焦点依然在）
+                clearButton.visibility = View.VISIBLE
+                // 保持光标位置并弹出键盘（可选）
                 searchEditText.requestFocus()
             } else {
-                // 如果没有文字，失去焦点
+                // 情况2：输入框无文字 → 退出搜索状态
                 searchEditText.clearFocus()
-                searchEditText.hint = "搜索本地音乐"
-                clearButton.visibility = View.GONE
+                val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                imm.hideSoftInputFromWindow(searchEditText.windowToken, 0)
+                // 焦点监听会自动隐藏清除按钮，并恢复默认 hint
             }
+        }
+
+        // ================== 返回键拦截（解决 Activity 重写 onBackPressed 的问题） ==================
+        searchEditText.setOnKeyListener { _, keyCode, event ->
+            // 仅在按下返回键且抬起时处理，避免重复触发
+            if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_UP) {
+                if (searchEditText.hasFocus()) {
+                    // 搜索框有焦点 → 清除焦点并关闭键盘，保留文字内容
+                    searchEditText.clearFocus()
+                    val imm = requireContext().getSystemService(android.content.Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                    imm.hideSoftInputFromWindow(searchEditText.windowToken, 0)
+                    // 返回 true 表示事件已被消费，不会继续传递到 Activity
+                    return@setOnKeyListener true
+                }
+            }
+            false
         }
     }
 

@@ -64,11 +64,11 @@ class SettingsFragment : Fragment() {
         setupHelp()
         setupAbout()
 
-        binding.tvCacheManagement.setOnClickListener {
+        binding.layoutCacheManagement.setOnClickListener {
             CacheManagementDialogFragment().show(parentFragmentManager, "CacheDialog")
         }
 
-        binding.tvResetLibrary.setOnClickListener {
+        binding.layoutResetLibrary.setOnClickListener {
             AlertDialog.Builder(requireContext())
                 .setTitle("重置歌曲库")
                 .setMessage("确定要删除所有歌曲数据吗？这将清空本地歌曲库和播放历史，你需要重新扫描添加歌曲。")
@@ -147,7 +147,7 @@ class SettingsFragment : Fragment() {
 
     private fun setupThemeSwitch() {
         updateThemeSwitchText()
-        binding.tvThemeSwitch.setOnClickListener {
+        binding.layoutThemeSwitch.setOnClickListener {
             showThemeDialog()
         }
     }
@@ -160,14 +160,14 @@ class SettingsFragment : Fragment() {
     }
 
     private fun setupHelp() {
-        binding.tvHelp.setOnClickListener {
+        binding.layoutHelp.setOnClickListener {
             val intent = Intent(requireContext(), HelpActivity::class.java)
             startActivity(intent)
         }
     }
 
     private fun setupAbout() {
-        binding.tvAbout.setOnClickListener {
+        binding.layoutAbout.setOnClickListener {
             val intent = Intent(requireContext(), AboutActivity::class.java)
             startActivity(intent)
         }
