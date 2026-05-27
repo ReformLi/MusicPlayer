@@ -28,6 +28,8 @@ class FavoritesFragment : Fragment() {
     private var allSongs = emptyList<Song>()
     private lateinit var adapter: SongAdapter
 
+    private var currentQuery = ""
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setHasOptionsMenu(true) // 可添加右上角菜单（如说明）
@@ -64,7 +66,17 @@ class FavoritesFragment : Fragment() {
         lifecycleScope.launch {
             songDao.getFavoriteSongs().collect { songs ->
                 allSongs = songs
-                adapter.submitList(songs)
+                // 根据 currentQuery 决定显示全部还是过滤
+                val displayList = if (currentQuery.isEmpty()) {
+                    songs
+                } else {
+                    songs.filter {
+                        it.title.contains(currentQuery, true) ||
+                                it.artist.contains(currentQuery, true) ||
+                                it.album.contains(currentQuery, true)
+                    }
+                }
+                adapter.submitList(displayList)
             }
         }
 
@@ -102,7 +114,7 @@ class FavoritesFragment : Fragment() {
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 val query = s?.toString()?.trim() ?: ""
-
+                currentQuery = query   // 记录当前查询
                 // 动态调整 hint：焦点内无文字显示长提示，有文字则清空 hint
                 if (searchEditText.hasFocus()) {
                     if (query.isEmpty()) {
@@ -136,6 +148,7 @@ class FavoritesFragment : Fragment() {
             if (searchEditText.text.isNotEmpty()) {
                 // 情况1：输入框有文字 → 清空文字，保留焦点和清除按钮
                 searchEditText.setText("")
+                currentQuery = ""   // 重置查询
                 // 手动设置 hint（因为 setText 不会自动触发 focus 相关 hint 变化）
                 searchEditText.hint = "搜索本地歌曲、歌手"
                 // 保持清除按钮可见（焦点依然在）

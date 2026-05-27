@@ -40,6 +40,8 @@ class SongsFragment : Fragment() {
     private var allSongs = emptyList<Song>()
     private lateinit var adapter: SongAdapter
 
+    private var currentQuery = ""
+
     // 文件夹选择器
     private val selectFolderLauncher = registerForActivityResult(
         ActivityResultContracts.OpenDocumentTree()
@@ -112,9 +114,19 @@ class SongsFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             songDao.getAllSongs().collect { songs ->
                 allSongs = songs
-                adapter.submitList(songs)
-                playerViewModel.setPlaylist(songs)
-                binding.emptyView.visibility = if (songs.isEmpty()) View.VISIBLE else View.GONE
+                // 根据 currentQuery 决定显示全部还是过滤
+                val displayList = if (currentQuery.isEmpty()) {
+                    songs
+                } else {
+                    songs.filter {
+                        it.title.contains(currentQuery, true) ||
+                                it.artist.contains(currentQuery, true) ||
+                                it.album.contains(currentQuery, true)
+                    }
+                }
+                adapter.submitList(displayList)
+                playerViewModel.setPlaylist(songs)   // 播放列表仍然用全部歌曲
+                binding.emptyView.visibility = if (displayList.isEmpty()) View.VISIBLE else View.GONE
             }
         }
 
@@ -158,7 +170,7 @@ class SongsFragment : Fragment() {
 
             override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {
                 val query = s?.toString()?.trim() ?: ""
-
+                currentQuery = query   // 记录当前查询
                 // 根据是否有焦点来设置不同的hint文本
                 if (searchEditText.hasFocus()) {
                     if (query.isEmpty()) {
@@ -189,6 +201,7 @@ class SongsFragment : Fragment() {
             if (searchEditText.text.isNotEmpty()) {
                 // 有文字：清空文字，保留焦点和清除按钮
                 searchEditText.setText("")
+                currentQuery = ""   // 重置查询
                 // 手动恢复hint并确保光标可见
                 if (searchEditText.hasFocus()) {
                     searchEditText.hint = "搜索本地歌曲、歌手"
