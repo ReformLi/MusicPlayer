@@ -148,7 +148,14 @@ class SongAdapter(
                 binding.tvTitle.setTypeface(null, Typeface.BOLD)
                 binding.tvArtist.setTextColor(highlightColor)
                 // 淡浅红色圆角背景
-                (binding.root as MaterialCardView).setCardBackgroundColor(highlightBg)
+                (binding.root as MaterialCardView).apply {
+                    setCardBackgroundColor(highlightBg)
+                    cardElevation = 0f          // 👈 消除阴影，避免分层
+                    strokeWidth = 0             // 确保无边框
+                }
+            }else {
+                // 恢复默认阴影（与 item_song.xml 中设置一致）
+                (binding.root as MaterialCardView).cardElevation = 2.dpToPx().toFloat()
             }
         }
     }
@@ -157,6 +164,13 @@ class SongAdapter(
         val typedValue = TypedValue()
         context.theme.resolveAttribute(attr, typedValue, true)
         return typedValue.data
+    }
+    private fun Int.dpToPx(): Int {
+        return TypedValue.applyDimension(
+            TypedValue.COMPLEX_UNIT_DIP,
+            this.toFloat(),
+            Resources.getSystem().displayMetrics
+        ).toInt()
     }
 
     private fun formatDuration(millis: Long): String {
