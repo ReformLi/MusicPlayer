@@ -88,7 +88,7 @@ class FavoritesFragment : Fragment() {
         val clearButton = binding.root.findViewById<ImageView>(R.id.ivClear)
 
         // 初始状态：提示文字
-        searchEditText.hint = "搜索本地音乐"
+        searchEditText.hint = "搜索喜爱音乐"
 
         // ================== 焦点变化监听 ==================
         searchEditText.setOnFocusChangeListener { _, hasFocus ->
@@ -103,7 +103,7 @@ class FavoritesFragment : Fragment() {
                 clearButton.visibility = View.VISIBLE
             } else {
                 // 失去焦点：恢复默认提示，隐藏清除按钮
-                searchEditText.hint = "搜索本地音乐"
+                searchEditText.hint = "搜索喜爱音乐"
                 clearButton.visibility = View.GONE
             }
         }

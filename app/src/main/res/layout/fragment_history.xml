@@ -1,18 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="?attr/colorSurface"
-    android:fitsSystemWindows="false">
+    android:orientation="vertical"
+    android:background="?attr/colorSurface">
+
+    <!-- Modern search bar -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/searchCardView"
+        android:layout_width="match_parent"
+        android:layout_height="40dp"
+        android:layout_margin="12dp"
+        android:layout_marginBottom="8dp"
+        android:clickable="true"
+        android:focusable="true"
+        android:foreground="?attr/selectableItemBackground"
+        app:cardBackgroundColor="?attr/colorSurface"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="2dp"
+        app:strokeWidth="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="4dp">
+
+            <ImageView
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_search"
+                app:tint="?attr/colorOnSurfaceVariant"
+                android:layout_marginEnd="8dp"
+                android:alpha="0.6" />
+
+            <EditText
+                android:id="@+id/searchEditText"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:background="@android:color/transparent"
+                android:hint="搜索本地音乐"
+                android:textColor="?attr/colorOnSurface"
+                android:textColorHint="?attr/colorOnSurfaceVariant"
+                android:textSize="14sp"
+                android:inputType="text"
+                android:maxLines="1"
+                android:imeOptions="actionSearch"
+                android:alpha="0.8" />
+
+            <ImageView
+                android:id="@+id/ivClear"
+                android:layout_width="18dp"
+                android:layout_height="18dp"
+                android:src="@drawable/ic_clear"
+                app:tint="?attr/colorOnSurfaceVariant"
+                android:layout_marginEnd="8dp"
+                android:alpha="0.6"
+                android:visibility="gone"
+                android:contentDescription="清除搜索" />
+
+        </LinearLayout>
+
+    </com.google.android.material.card.MaterialCardView>
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/rvHistory"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:padding="4dp"
-        android:clipToPadding="false"
-        android:fitsSystemWindows="false" />
+        android:clipToPadding="false" />
 
     <TextView
         android:id="@+id/tvEmptyState"
@@ -20,20 +81,8 @@
         android:layout_height="wrap_content"
         android:layout_gravity="center"
         android:text="暂无播放历史"
-        android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge"
         android:textColor="?attr/colorOnSurfaceVariant"
+        android:textSize="18sp"
         android:visibility="gone" />
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fabClearHistory"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_margin="16dp"
-        android:src="@drawable/ic_delete"
-        android:contentDescription="清空历史"
-        app:tint="?attr/colorOnError"
-        app:backgroundTint="?attr/colorError"
-        android:visibility="gone" />
-
-</FrameLayout>
+</LinearLayout>
