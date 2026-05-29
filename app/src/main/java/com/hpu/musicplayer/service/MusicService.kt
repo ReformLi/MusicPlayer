@@ -201,6 +201,11 @@ class MusicService : Service() {
             mp.setOnCompletionListener { playNext() }
             mediaPlayer = mp
             currentSong = song
+
+            // 查找歌曲在播放列表中的索引
+            currentIndex = playlist.indexOfFirst { it.id == song.id }
+            _currentIndexFlow.value = currentIndex
+
             updateState(song, PlaybackState.PLAYING)
             updateNotificationAndForeground(song, PlaybackState.PLAYING)
             startProgressUpdates()
@@ -294,7 +299,10 @@ class MusicService : Service() {
     fun setPlaylist(songs: List<Song>) {
         playlist.clear()
         playlist.addAll(songs)
-        currentIndex = -1
+        // 如果当前有歌曲，在新列表中查找其索引，找不到才设为 -1
+        currentIndex = currentSong?.let { song ->
+            playlist.indexOfFirst { it.id == song.id }
+        } ?: -1
         _playlistFlow.value = playlist.toList()
         _currentIndexFlow.value = currentIndex
     }
@@ -442,7 +450,9 @@ class MusicService : Service() {
             mp.setOnCompletionListener { playNext() }
             mediaPlayer = mp
             currentSong = song
+            // 查找歌曲在播放列表中的索引
             currentIndex = playlist.indexOfFirst { it.id == song.id }
+            _currentIndexFlow.value = currentIndex
 
             // 直接设置状态，使用传入的 startPosition 作为进度
             _playerState.value = PlayerData(
