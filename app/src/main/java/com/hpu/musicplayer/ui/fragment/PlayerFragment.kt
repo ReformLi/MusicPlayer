@@ -129,8 +129,9 @@ class PlayerFragment : Fragment() {
             binding.tvTotalTime.text = formatTime(data.duration)
 
             // 封面
-            if (!song.coverPath.isNullOrEmpty()) {
-                binding.ivAlbumArt.load(File(song.coverPath)) {
+            val coverPath = song.customCoverPath ?: song.coverPath
+            if (!coverPath.isNullOrEmpty()) {
+                binding.ivAlbumArt.load(File(coverPath)) {
                     placeholder(R.drawable.ic_music_note)
                     error(R.drawable.ic_music_note)
                 }

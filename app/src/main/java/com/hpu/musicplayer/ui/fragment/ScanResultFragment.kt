@@ -14,6 +14,7 @@ import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.databinding.FragmentScanResultBinding
 import com.hpu.musicplayer.databinding.ItemScanFolderBinding
+import com.hpu.musicplayer.utils.CoverMigration
 import com.hpu.musicplayer.utils.ScanManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -117,6 +118,15 @@ class ScanResultFragment : Fragment() {
                 val db = AppDatabase.Companion.getDatabase(requireContext())
                 db.songDao().deleteAll()
                 db.songDao().insertAll(selectedSongs)
+
+                // 迁移封面
+                for (song in selectedSongs) {
+                    val dbSong = db.songDao().getSongByPath(song.path)
+                    if (dbSong != null) {
+                        CoverMigration.migrateSongCover(requireContext(), dbSong)
+                    }
+                }
+
                 Toast.makeText(requireContext(), "已添加 ${selectedSongs.size} 首歌曲", Toast.LENGTH_SHORT).show()
                 parentFragmentManager.popBackStack()
             }

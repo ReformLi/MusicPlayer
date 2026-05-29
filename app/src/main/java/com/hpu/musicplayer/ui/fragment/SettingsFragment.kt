@@ -24,6 +24,7 @@ import com.hpu.musicplayer.service.PlayMode
 import com.hpu.musicplayer.ui.activity.AboutActivity
 import com.hpu.musicplayer.ui.activity.HelpActivity
 import com.hpu.musicplayer.ui.dialog.CacheManagementDialogFragment
+import com.hpu.musicplayer.utils.CoverMigration
 import com.hpu.musicplayer.utils.SettingsPreferences
 import com.hpu.musicplayer.utils.ThemeChangeManager
 import com.hpu.musicplayer.utils.ThemeHelper
@@ -242,6 +243,8 @@ class SettingsFragment : Fragment() {
             db.playbackStateDao().saveState(
                 PlaybackStateEntity(currentSongId = -1, position = 0, playMode = PlayMode.LIST_LOOP.name)
             )
+            // 清空保存的私有专辑图片
+            CoverMigration.clearAllCovers(requireContext())
 
             // 3. 重新启动服务（之前被 stopSelf 了）
             val intent = Intent(requireContext(), MusicService::class.java)

@@ -27,6 +27,7 @@ import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.databinding.FragmentSongsBinding
 import com.hpu.musicplayer.service.MusicService
 import com.hpu.musicplayer.ui.adapter.SongAdapter
+import com.hpu.musicplayer.utils.CoverMigration
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -245,6 +246,8 @@ class SongsFragment : Fragment() {
             .setTitle("删除歌曲")
             .setMessage("确定要删除 ${song.title} 吗？")
             .setPositiveButton("删除") { _, _ ->
+                // 清除私有封面文件
+                CoverMigration.deleteCoverFiles(requireContext(), song.id)
                 lifecycleScope.launch {
                     val db = AppDatabase.Companion.getDatabase(requireContext())
                     db.songDao().delete(song)

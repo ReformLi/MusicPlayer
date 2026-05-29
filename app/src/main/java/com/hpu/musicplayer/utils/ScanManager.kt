@@ -144,6 +144,13 @@ object ScanManager {
         db.songDao().deleteAll()
         db.songDao().insertAll(mergedSongs)
         Log.d(TAG, "Incremental scan merged ${mergedSongs.size} songs")
+        // 封面迁移（对所有歌曲，无论新旧）
+        for (song in mergedSongs) {
+            val dbSong = db.songDao().getSongByPath(song.path)
+            if (dbSong != null) {
+                CoverMigration.migrateSongCover(context, dbSong)
+            }
+        }
     }
 
     // 辅助：从文件路径提取歌曲信息

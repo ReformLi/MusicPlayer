@@ -102,9 +102,10 @@ class SongAdapter(
             binding.tvDuration.text = formatDuration(song.duration)
 
             // 2. 封面
-            if (!song.coverPath.isNullOrEmpty()) {
+            val coverPath = song.customCoverPath ?: song.coverPath
+            if (!coverPath.isNullOrEmpty()) {
                 Glide.with(binding.ivCover.context)
-                    .load(File(song.coverPath))
+                    .load(File(coverPath))
                     .placeholder(R.drawable.ic_music_note)
                     .error(R.drawable.ic_music_note)
                     .into(binding.ivCover)

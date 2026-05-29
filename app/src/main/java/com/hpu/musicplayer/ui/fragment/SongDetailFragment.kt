@@ -17,6 +17,7 @@ import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.databinding.FragmentSongDetailBinding
+import com.hpu.musicplayer.utils.CoverMigration
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import kotlinx.coroutines.launch
 import java.io.File
@@ -103,16 +104,29 @@ class SongDetailFragment : Fragment() {
     }
 
     private fun saveCustomCover(uri: Uri) {
-        // 将选中的图片复制到应用私有目录
-        val destFile = File(requireContext().filesDir, "custom_covers/${songId}_cover.jpg")
-        destFile.parentFile?.mkdirs()
-        requireContext().contentResolver.openInputStream(uri)?.use { input ->
-            destFile.outputStream().use { output ->
-                input.copyTo(output)
+        val song = currentSong ?: return
+        val destFile = CoverMigration.getCoverFile(requireContext(), song.id)
+        try {
+            requireContext().contentResolver.openInputStream(uri)?.use { input ->
+                destFile.outputStream().use { output -> input.copyTo(output) }
             }
+            // 删除旧的自定义封面（如果存在且不是同一文件）
+            song.customCoverPath?.let { oldPath ->
+                val oldFile = File(oldPath)
+                if (oldFile.exists() && oldFile.absolutePath != destFile.absolutePath) {
+                    oldFile.delete()
+                }
+            }
+            song.customCoverPath = destFile.absolutePath
+            // 更新数据库
+            lifecycleScope.launch {
+                AppDatabase.getDatabase(requireContext()).songDao().update(song)
+            }
+            // 刷新界面预览
+            binding.ivDetailCover.load(destFile)
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "保存封面失败", Toast.LENGTH_SHORT).show()
         }
-        currentSong?.customCoverPath = destFile.absolutePath
-        updateCoverPreview(destFile.absolutePath)
     }
 
     private fun saveCustomLrc(uri: Uri) {
