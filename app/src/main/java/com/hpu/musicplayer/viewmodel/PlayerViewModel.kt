@@ -11,6 +11,7 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
 import com.google.common.util.concurrent.MoreExecutors
 import com.hpu.musicplayer.data.Song
+import com.hpu.musicplayer.data.repository.MusicRepository
 import com.hpu.musicplayer.service.MusicService
 import com.hpu.musicplayer.service.PlayMode
 import com.hpu.musicplayer.service.PlaybackState
@@ -24,11 +25,18 @@ import kotlinx.coroutines.launch
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
 
+    private val repository = MusicRepository.getInstance(application)
+
     // ---------- 暴露 Service 中的状态 ----------
     val playerState: StateFlow<PlayerData> = MusicService.playerState
     val playMode: StateFlow<PlayMode> = MusicService.playModeState
     val playlist: StateFlow<List<Song>> = MusicService.playlistFlow
     val currentPlayIndex: StateFlow<Int> = MusicService.currentIndexFlow
+
+    // ---------- 数据访问统一通过 Repository ----------
+    val allSongs = repository.getAllSongs()
+    val favoriteSongs = repository.getFavoriteSongs()
+    val playHistory = repository.getAllPlayHistory()
 
     // ---------- MediaController 连接 ----------
     private var mediaController: MediaController? = null
@@ -282,6 +290,38 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             putLong(MusicService.EXTRA_POSITION, position)
         }
         sendCustomCommandInternal(MusicService.ACTION_RESTORE_SONG, bundle)
+    }
+
+    suspend fun getSongById(id: Long): Song? {
+        return repository.getSongById(id)
+    }
+
+    suspend fun getSongByPath(path: String): Song? {
+        return repository.getSongByPath(path)
+    }
+
+    fun updateSong(song: Song) {
+        viewModelScope.launch {
+            repository.updateSong(song)
+        }
+    }
+
+    fun toggleFavorite(song: Song) {
+        viewModelScope.launch {
+            repository.updateSong(song.copy(isFavorite = !song.isFavorite))
+        }
+    }
+
+    fun deleteSongFromDatabase(song: Song) {
+        viewModelScope.launch {
+            repository.deleteSong(song)
+        }
+    }
+
+    fun clearPlayHistory() {
+        viewModelScope.launch {
+            repository.deleteAllPlayHistory()
+        }
     }
 
     // ---------- 定时器 ----------

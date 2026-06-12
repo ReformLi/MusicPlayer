@@ -21,7 +21,6 @@ import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import coil.load
 import com.hpu.musicplayer.R
-import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.databinding.FragmentPlayerBinding
 import com.hpu.musicplayer.service.PlayMode
@@ -79,7 +78,7 @@ class PlayerFragment : Fragment() {
                 // 冷启动补救：仅在首次、有目标歌曲、且 Service 完全无歌时执行
                 if (!initialPlayDone && songId != -1L && data.currentSong == null) {
                     initialPlayDone = true
-                    val song = AppDatabase.getDatabase(requireContext()).songDao().getSongById(songId)
+                    val song = playerViewModel.getSongById(songId)
                     if (song != null) {
                         playerViewModel.play(song)   // 这里只用一次
                     }
@@ -138,6 +137,9 @@ class PlayerFragment : Fragment() {
         val song = data.currentSong
         if (song != null) {
             // 歌曲信息
+            binding.tvSongTitle.text = song.title
+            binding.tvSongArtist.text = song.artist
+
             // 时间显示（使用安全值）
             binding.tvCurrentTime.text = formatTime(safeProgress)
             binding.tvTotalTime.text = formatTime(safeDuration)

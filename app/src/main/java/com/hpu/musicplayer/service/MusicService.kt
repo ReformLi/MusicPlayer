@@ -13,6 +13,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
@@ -24,9 +25,9 @@ import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
 import com.hpu.musicplayer.R
-import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.data.PlaybackStateEntity
 import com.hpu.musicplayer.data.Song
+import com.hpu.musicplayer.data.repository.MusicRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -88,6 +89,7 @@ class MusicService : MediaSessionService() {
     private var progressUpdateJob: Job? = null
     private var player: ExoPlayer? = null
     private lateinit var mediaSession: MediaSession
+    private val repository by lazy { MusicRepository.getInstance(applicationContext) }
 
     private var currentSong: Song? = null
     private var playMode = PlayMode.LIST_LOOP
@@ -218,12 +220,16 @@ class MusicService : MediaSessionService() {
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             val newIndex = player?.currentMediaItemIndex ?: -1
-            Log.d(TAG, "onMediaItemTransition: newIndex=$newIndex, reason=$reason")
+            Log.d(TAG, "onMediaItemTransition: newIndex=$newIndex, reason=$reason, repeatMode=${player?.repeatMode}, shuffle=${player?.shuffleModeEnabled}")
             if (newIndex != -1 && newIndex < playlist.size) {
                 currentIndex = newIndex
                 currentSong = playlist[currentIndex]
                 _currentIndexFlow.value = currentIndex
                 updateState()
+                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED && player?.playWhenReady == true) {
+                    recordPlayHistory(currentSong!!)
+                    saveCurrentStateAsync()
+                }
             }
         }
 
@@ -232,6 +238,18 @@ class MusicService : MediaSessionService() {
                 player?.seekTo(pendingSeekIndex, pendingSeekPosition)
                 pendingSeekIndex = -1
             }
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            Log.e(TAG, "Play error: ${error.message}", error)
+            showToast("播放失败: ${error.localizedMessage}")
+            currentSong = null
+            currentIndex = -1
+            _currentIndexFlow.value = -1
+            _playerState.value = PlayerData(null, PlaybackState.STOPPED, 0, 0)
+            player?.stop()
+            stopForeground(true)
+            stopSelf()
         }
     }
 
@@ -326,6 +344,8 @@ class MusicService : MediaSessionService() {
 
     // ------------------- 业务方法 -------------------
     fun play(song: Song) {
+        if (handleSameSongPlayback(song)) return
+
         if (playlist.isEmpty() || playlist.none { it.id == song.id }) {
             setPlaylist(listOf(song))
         }
@@ -334,6 +354,14 @@ class MusicService : MediaSessionService() {
     }
 
     private fun playSongFromCommand(song: Song) {
+        if (handleSameSongPlayback(song)) return
+
+        val index = playlist.indexOfFirst { it.id == song.id }
+        if (index >= 0) {
+            playAtIndex(index)
+            return
+        }
+
         val mediaItem = buildMediaItem(song)
         player?.apply {
             stop()
@@ -342,11 +370,15 @@ class MusicService : MediaSessionService() {
             prepare()
             playWhenReady = true
         }
+        playlist.clear()
+        playlist.add(song)
         currentSong = song
         currentIndex = 0
         _currentIndexFlow.value = 0
-        _playlistFlow.value = listOf(song)
+        _playlistFlow.value = playlist.toList()
         updateState()
+        recordPlayHistory(song)
+        saveCurrentStateAsync()
     }
 
     fun setPlaylist(songs: List<Song>) {
@@ -359,6 +391,7 @@ class MusicService : MediaSessionService() {
         Log.d(TAG, "setPlaylist: updating playlist with ${songs.size} songs")
         val previousSong = currentSong
         val previousPosition = player?.currentPosition ?: 0L
+        val shouldResume = player?.playWhenReady == true
 
         playlist.clear()
         playlist.addAll(songs)
@@ -368,16 +401,19 @@ class MusicService : MediaSessionService() {
         player?.apply {
             stop()                  // 停止当前播放（避免旧音频残留）
             clearMediaItems()
-            addMediaItems(mediaItems)
         }
 
         if (previousSong != null) {
             currentIndex = playlist.indexOfFirst { it.id == previousSong.id }
             if (currentIndex >= 0) {
-                // 延迟恢复，确保播放器准备好
-                pendingSeekIndex = currentIndex
-                pendingSeekPosition = previousPosition
-                player?.prepare()
+                currentSong = playlist[currentIndex]
+                _currentIndexFlow.value = currentIndex
+                player?.apply {
+                    setMediaItems(mediaItems, currentIndex, previousPosition)
+                    prepare()
+                    playWhenReady = shouldResume
+                }
+                updateState()
             } else {
                 // 原歌曲不在新列表中，清除状态
                 currentSong = null
@@ -386,6 +422,7 @@ class MusicService : MediaSessionService() {
                 updateState()
             }
         } else {
+            player?.addMediaItems(mediaItems)
             updateState()
         }
     }
@@ -393,7 +430,13 @@ class MusicService : MediaSessionService() {
     fun playAtIndex(index: Int) {
         if (playlist.isEmpty()) return
         val safeIndex = index.coerceIn(0, playlist.size - 1)
+        val song = playlist[safeIndex]
+        if (handleSameSongPlayback(song)) return
+
         Log.d(TAG, "playAtIndex: seeking to $safeIndex and playing")
+        currentIndex = safeIndex
+        currentSong = song
+        _currentIndexFlow.value = currentIndex
         player?.apply {
             seekTo(safeIndex, 0)
             playWhenReady = true
@@ -402,6 +445,9 @@ class MusicService : MediaSessionService() {
                 prepare()
             }
         }
+        updateState()
+        recordPlayHistory(song)
+        saveCurrentStateAsync()
     }
 
     fun removeSongAtIndex(index: Int) {
@@ -591,8 +637,11 @@ class MusicService : MediaSessionService() {
     }
 
     private fun buildMediaItem(song: Song): MediaItem {
-        val uri = if (song.path.startsWith("content://")) Uri.parse(song.path)
-        else Uri.fromFile(File(song.path))
+        val uri = if (song.path.startsWith("content://")) {
+            Uri.parse(song.path).also { ensurePersistableReadPermission(it) }
+        } else {
+            Uri.fromFile(File(song.path))
+        }
         val metadata = MediaMetadata.Builder()
             .setTitle(song.title)
             .setArtist(song.artist)
@@ -603,6 +652,40 @@ class MusicService : MediaSessionService() {
             .setMediaId(song.id.toString())
             .setMediaMetadata(metadata)
             .build()
+    }
+
+    private fun handleSameSongPlayback(song: Song): Boolean {
+        if (currentSong?.id != song.id) return false
+
+        if (player?.isPlaying == true) {
+            return true
+        }
+
+        player?.play()
+        updateState()
+        startProgressUpdates()
+        saveCurrentStateAsync()
+        return true
+    }
+
+    private fun ensurePersistableReadPermission(uri: Uri) {
+        try {
+            contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        } catch (e: SecurityException) {
+            Log.w(TAG, "takePersistableUriPermission failed: ${e.message}")
+        } catch (e: IllegalArgumentException) {
+            Log.w(TAG, "takePersistableUriPermission not available: ${e.message}")
+        }
+    }
+
+    private fun recordPlayHistory(song: Song) {
+        CoroutineScope(Dispatchers.IO).launch {
+            try {
+                repository.recordPlayHistory(song)
+            } catch (e: Exception) {
+                Log.e(TAG, "Record play history error: ${e.message}", e)
+            }
+        }
     }
 
     private fun updateState() {
@@ -647,12 +730,10 @@ class MusicService : MediaSessionService() {
             )
 
             // 3. 数据库写入操作切换到 IO 线程，避免阻塞主线程
-            withContext(Dispatchers.IO) {
-                try {
-                    AppDatabase.getDatabase(this@MusicService).playbackStateDao().saveState(state)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Save state error: ${e.message}")
-                }
+            try {
+                repository.savePlaybackState(state)
+            } catch (e: Exception) {
+                Log.e(TAG, "Save state error: ${e.message}")
             }
         }
     }
