@@ -1,57 +1,77 @@
 package com.hpu.musicplayer.service
 
-import android.Manifest
-import android.annotation.SuppressLint
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.content.pm.ServiceInfo
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.media.MediaPlayer
 import android.net.Uri
-import android.os.Binder
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
-import android.os.IBinder
 import android.os.Looper
-import android.support.v4.media.session.MediaSessionCompat
-import android.support.v4.media.session.PlaybackStateCompat
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
-import com.hpu.musicplayer.MainActivity
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.DefaultMediaNotificationProvider
+import androidx.media3.session.MediaSession
+import androidx.media3.session.MediaSessionService
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
 import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.AppDatabase
-import com.hpu.musicplayer.data.PlayHistory
 import com.hpu.musicplayer.data.PlaybackStateEntity
 import com.hpu.musicplayer.data.Song
-import com.hpu.musicplayer.receiver.NotificationActionReceiver
-import com.hpu.musicplayer.utils.SettingsPreferences
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.io.File
-import kotlin.random.Random
 
-class MusicService : Service() {
+
+class MusicService : MediaSessionService() {
 
     companion object {
         private const val TAG = "MusicService"
+
         private const val NOTIFICATION_ID = 1
+
         private const val CHANNEL_ID = "playback_channel"
 
-        @Volatile
-        private var instance: MusicService? = null
-        fun getInstance(): MusicService? = instance
+        // 自定义命令常量（移除了通知相关）
+        const val ACTION_PLAY_SONG = "PLAY_SONG"
+        const val ACTION_CYCLE_PLAY_MODE = "CYCLE_PLAY_MODE"
+        const val ACTION_SET_PLAYLIST = "SET_PLAYLIST"
+        const val ACTION_REMOVE_SONG = "REMOVE_SONG"
+        const val ACTION_CLEAR_PLAYLIST = "CLEAR_PLAYLIST"
+        const val ACTION_MOVE_SONG = "MOVE_SONG"
+        const val ACTION_STOP_PLAYBACK = "STOP_PLAYBACK"
+        const val ACTION_PREPARE_SONG = "PREPARE_SONG"
+        const val ACTION_SET_PLAY_MODE = "SET_PLAY_MODE"
+        const val ACTION_REMOVE_SONG_INDEX = "REMOVE_SONG_INDEX"
 
+        const val ACTION_RESTORE_SONG = "RESTORE_SONG"
+
+        const val EXTRA_SONG = "song"
+        const val EXTRA_POSITION = "position"
+        const val EXTRA_MODE = "mode"
+        const val EXTRA_INDEX = "index"
+        const val EXTRA_FROM = "from"
+        const val EXTRA_TO = "to"
+
+        // 状态流（全局可读）
         private val _playerState = MutableStateFlow(PlayerData(null, PlaybackState.STOPPED, 0, 0))
         val playerState: StateFlow<PlayerData> = _playerState.asStateFlow()
 
@@ -65,321 +85,486 @@ class MusicService : Service() {
         val currentIndexFlow: StateFlow<Int> = _currentIndexFlow.asStateFlow()
     }
 
-    inner class LocalBinder : Binder() {
-        fun getService(): MusicService = this@MusicService
-    }
+    private var progressUpdateJob: Job? = null
+    private var player: ExoPlayer? = null
+    private lateinit var mediaSession: MediaSession
 
-    private var mediaPlayer: MediaPlayer? = null
-    private var currentCoverBitmap: Bitmap? = null
     private var currentSong: Song? = null
-    private var progressJob: Job? = null
-
-    private val playlist = mutableListOf<Song>()
-    private var currentIndex = -1
     private var playMode = PlayMode.LIST_LOOP
-
-    private lateinit var notificationManager: NotificationManagerCompat
-    private lateinit var mediaSession: MediaSessionCompat
+    private var playlist = mutableListOf<Song>()
+    private var currentIndex = -1
 
     private var saveJob: Job? = null
     private var lastSavedProgress = 0L
 
+    private var pendingSeekIndex = -1
+    private var pendingSeekPosition = 0L
+
+    // ------------------- MediaSession 回调 -------------------
+    private inner class MySessionCallback : MediaSession.Callback {
+        @UnstableApi
+        override fun onConnect(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo
+        ): MediaSession.ConnectionResult {
+            val sessionCommands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                .add(SessionCommand(ACTION_PLAY_SONG, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_CYCLE_PLAY_MODE, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_SET_PLAYLIST, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_REMOVE_SONG, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_CLEAR_PLAYLIST, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_MOVE_SONG, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_STOP_PLAYBACK, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_PREPARE_SONG, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_SET_PLAY_MODE, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_REMOVE_SONG_INDEX, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_RESTORE_SONG, Bundle.EMPTY))
+                .build()
+
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(sessionCommands)
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: Bundle
+        ): ListenableFuture<SessionResult> {
+            return when (customCommand.customAction) {
+                ACTION_PLAY_SONG -> {
+                    val song = if (Build.VERSION.SDK_INT >= 33)
+                        args.getParcelable(EXTRA_SONG, Song::class.java)
+                    else
+                        args.getParcelable(EXTRA_SONG)
+                    if (song != null) {
+                        Log.d(TAG, "ACTION_PLAY_SONG received: ${song.title}")
+                        playSongFromCommand(song)   // 下面会定义这个方法
+                    } else {
+                        Log.e(TAG, "ACTION_PLAY_SONG: missing song")
+                    }
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_CYCLE_PLAY_MODE -> {
+                    Log.d(TAG, "Received CYCLE_PLAY_MODE command, current playMode=$playMode")
+                    cyclePlayMode()
+                    Log.d(TAG, "After cyclePlayMode, new playMode=$playMode")
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_SET_PLAYLIST -> {
+                    val songs = if (Build.VERSION.SDK_INT >= 33)
+                        args.getParcelableArrayList("songs", Song::class.java)
+                    else
+                        args.getParcelableArrayList("songs")
+                    if (songs != null) setPlaylist(songs)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_REMOVE_SONG -> {
+                    val index = args.getInt(EXTRA_INDEX, -1)
+                    if (index >= 0) removeSongPermanently(index)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_CLEAR_PLAYLIST -> {
+                    clearPlaylist()
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_MOVE_SONG -> {
+                    val from = args.getInt(EXTRA_FROM, -1)
+                    val to = args.getInt(EXTRA_TO, -1)
+                    if (from >= 0 && to >= 0) moveItem(from, to)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_STOP_PLAYBACK -> {
+                    stopPlayback()
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_PREPARE_SONG -> {
+                    val song = if (Build.VERSION.SDK_INT >= 33)
+                        args.getParcelable(EXTRA_SONG, Song::class.java)
+                    else
+                        args.getParcelable(EXTRA_SONG)
+                    val position = args.getLong(EXTRA_POSITION, 0L)
+                    if (song != null) prepareSong(song, position)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_SET_PLAY_MODE -> {
+                    val modeName = args.getString(EXTRA_MODE)
+                    val mode = try { PlayMode.valueOf(modeName!!) } catch (e: Exception) { PlayMode.LIST_LOOP }
+                    setPlayMode(mode)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_REMOVE_SONG_INDEX -> {
+                    val index = args.getInt(EXTRA_INDEX, -1)
+                    if (index >= 0) removeSongAtIndex(index)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_RESTORE_SONG -> {
+                    val song = args.getParcelable<Song>(EXTRA_SONG)
+                    val position = args.getLong(EXTRA_POSITION, 0L)
+                    if (song != null) restoreSong(song, position)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                else -> super.onCustomCommand(session, controller, customCommand, args)
+            }
+        }
+    }
+
+    // ------------------- 播放器事件监听 -------------------
+    private inner class PlayerEventListener : Player.Listener {
+        override fun onIsPlayingChanged(isPlaying: Boolean) {
+            updateState()
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val newIndex = player?.currentMediaItemIndex ?: -1
+            Log.d(TAG, "onMediaItemTransition: newIndex=$newIndex, reason=$reason")
+            if (newIndex != -1 && newIndex < playlist.size) {
+                currentIndex = newIndex
+                currentSong = playlist[currentIndex]
+                _currentIndexFlow.value = currentIndex
+                updateState()
+            }
+        }
+
+        override fun onPlaybackStateChanged(state: Int) {
+            if (state == Player.STATE_READY && pendingSeekIndex != -1) {
+                player?.seekTo(pendingSeekIndex, pendingSeekPosition)
+                pendingSeekIndex = -1
+            }
+        }
+    }
+
+    // ------------------- 生命周期 -------------------
+    @UnstableApi
     override fun onCreate() {
         super.onCreate()
-        instance = this
-        notificationManager = NotificationManagerCompat.from(this)
         createNotificationChannel()
-        initMediaSession()
-        _playerState.value = PlayerData(null, PlaybackState.STOPPED, 0, 0)
-        saveJob = CoroutineScope(Dispatchers.IO).launch {
+
+        // 初始化 ExoPlayer
+        player = ExoPlayer.Builder(this).build().apply {
+            addListener(PlayerEventListener())
+        }
+
+        // 初始化 MediaSession
+        mediaSession = MediaSession.Builder(this, player!!)
+            .setId("MusicPlayer")
+            .setCallback(MySessionCallback())
+            .build()
+
+        // 配置 Media3 自动通知（使用默认实现）
+        setMediaNotificationProvider(
+            DefaultMediaNotificationProvider.Builder(this)
+                .setChannelId(CHANNEL_ID)
+//                .setSmallIcon(R.drawable.ic_music_note)
+                .build()
+        )
+
+        // 启动状态保存协程
+        saveJob = CoroutineScope(Dispatchers.Main).launch {
             while (isActive) {
                 delay(5000)
                 saveCurrentState()
             }
         }
+
+        // 开始进度更新协程
+        startProgressUpdates()
     }
 
-    override fun onBind(intent: Intent?): IBinder? = LocalBinder()
+    override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
-    private suspend fun saveCurrentState() {
-        val song = currentSong ?: return
-        val progress = getCurrentPosition()
-        if (progress == lastSavedProgress) return
-        lastSavedProgress = progress
-        val state = PlaybackStateEntity(
-            currentSongId = song.id,
-            position = progress,
-            playMode = playMode.name
-        )
-        try {
-            AppDatabase.getDatabase(this@MusicService).playbackStateDao().saveState(state)
-        } catch (e: Exception) {
-            Log.e(TAG, "Save state error: ${e.message}")
-        }
-    }
-
-    private fun initMediaSession() {
-        mediaSession = MediaSessionCompat(this, "MusicPlayer").apply {
-            setFlags(MediaSessionCompat.FLAG_HANDLES_MEDIA_BUTTONS or MediaSessionCompat.FLAG_HANDLES_TRANSPORT_CONTROLS)
-            setPlaybackState(PlaybackStateCompat.Builder()
-                .setState(PlaybackStateCompat.STATE_NONE, 0, 0f)
-                .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
-                .build())
-            setCallback(object : MediaSessionCompat.Callback() {
-                override fun onPlay() = resume()
-                override fun onPause() = pause()
-                override fun onSkipToNext() = playNext()
-                override fun onSkipToPrevious() = playPrevious()
-            })
-            isActive = true
-        }
-    }
-
-    fun play(song: Song) {
-        Log.d(TAG, "play() called: ${song.title}, path: ${song.path}")
-
-        // 加载封面
-        currentCoverBitmap = if (!song.coverPath.isNullOrEmpty()) {
-            try {
-                BitmapFactory.decodeFile(song.coverPath)
-            } catch (e: Exception) {
-                Log.e(TAG, "加载封面失败: ${e.message}")
-                null
-            }
-        } else null
-
-        // 同一首歌已在播放，忽略
-        if (currentSong?.id == song.id && mediaPlayer?.isPlaying == true) return
-
-        // 同一首歌但暂停，直接恢复
-        if (currentSong?.id == song.id && mediaPlayer != null && !mediaPlayer!!.isPlaying) {
-            mediaPlayer?.start()
-            updateState(song, PlaybackState.PLAYING)
-            updateNotificationAndForeground(song, PlaybackState.PLAYING)
-            startProgressUpdates()
-            CoroutineScope(Dispatchers.IO).launch { saveCurrentState() }
-            return
-        }
-
-        // 释放旧播放器
-        mediaPlayer?.release()
-        val mp = MediaPlayer()
-        try {
-            if (song.path.startsWith("content://")) {
-                val uri = Uri.parse(song.path)
-                try {
-                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                } catch (e: SecurityException) {
-                    Log.w(TAG, "takePersistableUriPermission failed: ${e.message}")
-                }
-                val afd = contentResolver.openAssetFileDescriptor(uri, "r")
-                if (afd != null) {
-                    Log.d(TAG, "openAssetFileDescriptor success, size=${afd.length}")
-                    mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                    afd.close()
-                } else {
-                    // 降级：拷贝到临时文件
-                    Log.w(TAG, "openAssetFileDescriptor returned null, fallback to temp file")
-                    val tempFile = File(cacheDir, "temp_${System.currentTimeMillis()}.mp3")
-                    contentResolver.openInputStream(uri)?.use { input ->
-                        tempFile.outputStream().use { output -> input.copyTo(output) }
-                    }
-                    if (tempFile.length() > 0) {
-                        Log.d(TAG, "Temp file created: ${tempFile.length()} bytes")
-                        mp.setDataSource(tempFile.absolutePath)
-                    } else {
-                        throw IllegalStateException("无法访问文件，临时文件为空")
-                    }
-                }
-            } else {
-                mp.setDataSource(song.path)
-            }
-            mp.prepare()
-            mp.start()
-            mp.setOnCompletionListener { playNext() }
-            mediaPlayer = mp
-            currentSong = song
-
-            // 查找歌曲在播放列表中的索引
-            currentIndex = playlist.indexOfFirst { it.id == song.id }
-            _currentIndexFlow.value = currentIndex
-
-            updateState(song, PlaybackState.PLAYING)
-            updateNotificationAndForeground(song, PlaybackState.PLAYING)
-            startProgressUpdates()
-
-            // 记录播放历史
-            CoroutineScope(Dispatchers.IO).launch {
-                val db = AppDatabase.getDatabase(this@MusicService)
-                db.playHistoryDao().insert(PlayHistory(
-                    songId = song.id,
-                    title = song.title,
-                    artist = song.artist,
-                    album = song.album,
-                    duration = song.duration,
-                    path = song.path,
-                    coverPath = song.coverPath,
-                    lrcPath = song.lrcPath,
-                    playedAt = System.currentTimeMillis()
-                ))
-            }
-            CoroutineScope(Dispatchers.IO).launch { saveCurrentState() }
-            Log.d(TAG, "播放成功: ${song.title}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Play error: ${e.message}", e)
-            showToast("播放失败: ${e.localizedMessage}")
-            mp.release()
-            mediaPlayer = null
-            currentSong = null
-            updateState(null, PlaybackState.STOPPED)
-            stopForeground(true)
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        if (player?.isPlaying != true) {
             stopSelf()
         }
     }
 
-    fun pause() {
-        mediaPlayer?.pause()
-        updateState(currentSong, PlaybackState.PAUSED)
-        updateNotificationAndForeground(currentSong, PlaybackState.PAUSED)   // 修复：使用 PAUSED
-        CoroutineScope(Dispatchers.IO).launch { saveCurrentState() }
+    override fun onDestroy() {
+        runBlocking { saveCurrentState() }
+        progressUpdateJob?.cancel()
+        saveJob?.cancel()
+        player?.release()
+        mediaSession.release()
+        super.onDestroy()
     }
 
-    fun resume() {
-        mediaPlayer?.start()
-        updateState(currentSong, PlaybackState.PLAYING)
-        updateNotificationAndForeground(currentSong, PlaybackState.PLAYING)
-        startProgressUpdates()   // 添加这行，确保进度流运行
-    }
-
-    fun togglePlayPause() {
-        if (mediaPlayer?.isPlaying == true) pause() else resume()
-    }
-
-    fun seekTo(position: Long) {
-        mediaPlayer?.seekTo(position.toInt())
-        CoroutineScope(Dispatchers.IO).launch { saveCurrentState() }
-    }
-
-    fun clearPlaylist() {
-        playlist.clear()
-        currentIndex = -1
-        _playlistFlow.value = emptyList()
-        _currentIndexFlow.value = -1
-        stopPlayback()
-    }
-
-    fun getCurrentPosition(): Long {
-        return try {
-            mediaPlayer?.currentPosition?.toLong() ?: 0L
-        } catch (e: Exception) {
-            Log.e(TAG, "getCurrentPosition error: ${e.message}")
-            0L
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        // 如果当前没有歌曲（即服务尚未开始播放任何内容），则显示一个默认的前台通知
+        if (currentSong == null) {
+            val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+                .setSmallIcon(R.drawable.ic_music_note)
+                .setContentTitle("音乐播放器")
+                .setContentText("准备就绪")
+                .setPriority(NotificationCompat.PRIORITY_LOW)
+                .build()
+            startForeground(NOTIFICATION_ID, notification)
         }
+        return START_STICKY
     }
-    fun getDuration(): Long = mediaPlayer?.duration?.toLong() ?: currentSong?.duration ?: 0
 
-    fun startProgressUpdates() {
-        progressJob?.cancel()
-        progressJob = CoroutineScope(Dispatchers.Main).launch {
+    // ------------------- 进度更新 -------------------
+    private fun startProgressUpdates() {
+        progressUpdateJob?.cancel()
+        progressUpdateJob = CoroutineScope(Dispatchers.Main).launch {
             while (isActive) {
-                val mp = mediaPlayer
-                if (mp != null && mp.isPlaying) {
+                if (player?.isPlaying == true) {
+                    val playerDuration = player?.duration?.takeIf { it > 0 }
+                    val duration = playerDuration ?: (currentSong?.duration ?: 0)
+                    val position = player?.currentPosition?.coerceAtLeast(0) ?: _playerState.value.progress
+
                     _playerState.value = _playerState.value.copy(
-                        progress = mp.currentPosition.toLong(),
-                        duration = mp.duration.toLong()
+                        progress = position,
+                        duration = duration
                     )
                 }
-                delay(100)// 可改为 80ms，每秒约 12.5 次更新，非常丝滑
+                delay(100)
             }
         }
     }
 
+    // ------------------- 业务方法 -------------------
+    fun play(song: Song) {
+        if (playlist.isEmpty() || playlist.none { it.id == song.id }) {
+            setPlaylist(listOf(song))
+        }
+        val index = playlist.indexOfFirst { it.id == song.id }
+        if (index >= 0) playAtIndex(index)
+    }
+
+    private fun playSongFromCommand(song: Song) {
+        val mediaItem = buildMediaItem(song)
+        player?.apply {
+            stop()
+            clearMediaItems()
+            setMediaItem(mediaItem)
+            prepare()
+            playWhenReady = true
+        }
+        currentSong = song
+        currentIndex = 0
+        _currentIndexFlow.value = 0
+        _playlistFlow.value = listOf(song)
+        updateState()
+    }
+
     fun setPlaylist(songs: List<Song>) {
+        // 如果列表完全一样，直接返回，避免打断播放
+        if (songs == playlist) {
+            Log.d(TAG, "setPlaylist: identical list, skipping")
+            return
+        }
+
+        Log.d(TAG, "setPlaylist: updating playlist with ${songs.size} songs")
+        val previousSong = currentSong
+        val previousPosition = player?.currentPosition ?: 0L
+
         playlist.clear()
         playlist.addAll(songs)
-        // 如果当前有歌曲，在新列表中查找其索引，找不到才设为 -1
-        currentIndex = currentSong?.let { song ->
-            playlist.indexOfFirst { it.id == song.id }
-        } ?: -1
         _playlistFlow.value = playlist.toList()
-        _currentIndexFlow.value = currentIndex
+
+        val mediaItems = playlist.map { buildMediaItem(it) }
+        player?.apply {
+            stop()                  // 停止当前播放（避免旧音频残留）
+            clearMediaItems()
+            addMediaItems(mediaItems)
+        }
+
+        if (previousSong != null) {
+            currentIndex = playlist.indexOfFirst { it.id == previousSong.id }
+            if (currentIndex >= 0) {
+                // 延迟恢复，确保播放器准备好
+                pendingSeekIndex = currentIndex
+                pendingSeekPosition = previousPosition
+                player?.prepare()
+            } else {
+                // 原歌曲不在新列表中，清除状态
+                currentSong = null
+                currentIndex = -1
+                _currentIndexFlow.value = -1
+                updateState()
+            }
+        } else {
+            updateState()
+        }
     }
 
     fun playAtIndex(index: Int) {
         if (playlist.isEmpty()) return
         val safeIndex = index.coerceIn(0, playlist.size - 1)
-        currentIndex = safeIndex
-        _currentIndexFlow.value = currentIndex
-        play(playlist[safeIndex])
+        Log.d(TAG, "playAtIndex: seeking to $safeIndex and playing")
+        player?.apply {
+            seekTo(safeIndex, 0)
+            playWhenReady = true
+            // 如果播放器处于 Idle 状态，可能需要 prepare
+            if (playbackState == Player.STATE_IDLE) {
+                prepare()
+            }
+        }
     }
 
-    fun playNext() {
-        if (playlist.isEmpty()) return
+    fun removeSongAtIndex(index: Int) {
+        if (index !in playlist.indices) return
 
-        when (playMode) {
-            PlayMode.LIST_LOOP -> {
-                if (currentIndex < playlist.size - 1) playAtIndex(currentIndex + 1)
-                else playAtIndex(0)
-            }
-            PlayMode.SINGLE_LOOP -> {
-                // 安全播放当前歌曲（如果当前歌曲存在），否则播放第一首
-                currentSong?.let { play(it) } ?: playAtIndex(0)
-            }
-            PlayMode.RANDOM -> {
-                if (playlist.size == 1) {
-                    play(playlist[0])
-                    return
+        val wasPlaying = player?.isPlaying == true
+
+        // 从 ExoPlayer 中移除对应媒体项
+        player?.removeMediaItem(index)
+
+        // 从本地列表移除
+        playlist.removeAt(index)
+        _playlistFlow.value = playlist.toList()
+
+        // 调整当前索引
+        when {
+            index < currentIndex -> currentIndex--
+            index == currentIndex -> {
+                // 删除的是当前播放的歌曲，这种情况应特殊处理（你的需求可能不允许删除当前歌曲，但以防万一）
+                if (currentIndex >= playlist.size) currentIndex = playlist.size - 1
+                if (currentIndex >= 0) {
+                    // 切换到下一首或上一首
+                    player?.seekTo(currentIndex, 0)
+                    if (wasPlaying) player?.play()
+                } else {
+                    stopPlayback()
                 }
-                var randomIndex: Int
-                do {
-                    randomIndex = Random.nextInt(playlist.size)
-                } while (randomIndex == currentIndex)
-                playAtIndex(randomIndex)
+            }
+            // index > currentIndex，无需改变 currentIndex
+        }
+
+        _currentIndexFlow.value = currentIndex
+        updateState()
+    }
+
+    fun restoreSong(song: Song, position: Long) {
+        val index = playlist.indexOfFirst { it.id == song.id }
+        if (index < 0) {
+            prepareSong(song, position)
+            return
+        }
+
+        currentSong = song
+        currentIndex = index
+        _currentIndexFlow.value = index
+
+        pendingSeekIndex = index
+        pendingSeekPosition = position
+
+        player?.apply {
+            playWhenReady = false
+            prepare()
+        }
+
+        _playerState.value = PlayerData(
+            currentSong = song,
+            state = PlaybackState.PAUSED,
+            progress = position,
+            duration = song.duration   // 这里用歌曲元数据时长
+        )
+    }
+
+    fun cyclePlayMode() {
+        val newMode = when (playMode) {
+            PlayMode.LIST_LOOP -> PlayMode.RANDOM
+            PlayMode.RANDOM -> PlayMode.SINGLE_LOOP
+            PlayMode.SINGLE_LOOP -> PlayMode.LIST_LOOP
+        }
+        setPlayMode(newMode)   // 内部会更新 _playMode 和 ExoPlayer 设置
+        saveCurrentStateAsync()
+        showToast(
+            when (newMode) {
+                PlayMode.LIST_LOOP -> "列表循环"
+                PlayMode.RANDOM -> "随机播放"
+                PlayMode.SINGLE_LOOP -> "单曲循环"
+            } + " 模式"
+        )
+    }
+
+    fun setPlayMode(mode: PlayMode) {
+        Log.d(TAG, "playMode111=$mode,playlist.size=${playlist.size}")
+        playMode = mode
+        _playMode.value = mode
+
+        player?.apply {
+            when (mode) {
+                PlayMode.LIST_LOOP -> {
+                    repeatMode = Player.REPEAT_MODE_ALL
+                    shuffleModeEnabled = false
+                }
+                PlayMode.RANDOM -> {
+                    repeatMode = Player.REPEAT_MODE_ALL
+                    shuffleModeEnabled = true
+                }
+                PlayMode.SINGLE_LOOP -> {
+                    repeatMode = Player.REPEAT_MODE_ONE
+                    shuffleModeEnabled = false
+                }
             }
         }
     }
 
-    fun playPrevious() {
-        if (playlist.isEmpty()) return
-        when (playMode) {
-            PlayMode.LIST_LOOP -> {
-                if (currentIndex > 0) playAtIndex(currentIndex - 1)
-                else playAtIndex(playlist.size - 1)
-            }
-            PlayMode.SINGLE_LOOP -> {
-                currentSong?.let { play(it) } ?: playAtIndex(0)
-            }
-            PlayMode.RANDOM -> {
-                var randomIndex: Int
-                do { randomIndex = Random.nextInt(playlist.size) } while (randomIndex == currentIndex)
-                playAtIndex(randomIndex)
-            }
+    fun prepareSong(song: Song, position: Long) {
+        val mediaItem = buildMediaItem(song)
+        currentSong = song
+        currentIndex = playlist.indexOfFirst { it.id == song.id }
+        _currentIndexFlow.value = currentIndex
+
+        player?.apply {
+            setMediaItem(mediaItem)
+            prepare()
+            seekTo(position)
+            // 不自动播放
         }
+        _playerState.value = PlayerData(
+            currentSong = song,
+            state = PlaybackState.PAUSED,
+            progress = position,
+            duration = song.duration
+        )
+    }
+
+    fun stopPlayback() {
+        player?.stop()
+        player?.clearMediaItems()
+        currentSong = null
+        currentIndex = -1
+        _currentIndexFlow.value = -1
+        updateState()
+    }
+
+    fun clearPlaylist() {
+        playlist.clear()
+        _playlistFlow.value = emptyList()
+        currentIndex = -1
+        _currentIndexFlow.value = -1
+        stopPlayback()
     }
 
     fun moveItem(fromIndex: Int, toIndex: Int) {
-        if (fromIndex < 0 || fromIndex >= playlist.size || toIndex < 0 || toIndex >= playlist.size) return
+        if (fromIndex !in playlist.indices || toIndex !in playlist.indices) return
         val item = playlist.removeAt(fromIndex)
         playlist.add(toIndex, item)
-        if (currentIndex == fromIndex) currentIndex = toIndex
-        else if (currentIndex in minOf(fromIndex, toIndex)..maxOf(fromIndex, toIndex)) {
-            if (fromIndex < toIndex) currentIndex-- else currentIndex++
-        }
         _playlistFlow.value = playlist.toList()
+
+        when {
+            fromIndex == currentIndex -> currentIndex = toIndex
+            fromIndex < currentIndex && toIndex >= currentIndex -> currentIndex--
+            fromIndex > currentIndex && toIndex <= currentIndex -> currentIndex++
+        }
         _currentIndexFlow.value = currentIndex
     }
 
     fun removeSongPermanently(index: Int) {
-        if (index < 0 || index >= playlist.size) return
+        if (index !in playlist.indices) return
         playlist.removeAt(index)
         _playlistFlow.value = playlist.toList()
+
         when {
             playlist.isEmpty() -> {
                 currentIndex = -1
-                _currentIndexFlow.value = currentIndex
-                stopSelf()
+                _currentIndexFlow.value = -1
+                stopPlayback()
             }
             index < currentIndex -> {
                 currentIndex--
@@ -387,232 +572,104 @@ class MusicService : Service() {
             }
             index == currentIndex -> {
                 if (currentIndex >= playlist.size) currentIndex = playlist.size - 1
-                playAtIndex(currentIndex)
+                if (currentIndex >= 0) playAtIndex(currentIndex) else stopPlayback()
             }
         }
     }
 
-    fun cyclePlayMode() {
-        playMode = when (playMode) {
-            PlayMode.LIST_LOOP -> PlayMode.RANDOM
-            PlayMode.RANDOM -> PlayMode.SINGLE_LOOP
-            PlayMode.SINGLE_LOOP -> PlayMode.LIST_LOOP
-        }
-        _playMode.value = playMode
-        Log.d(TAG, "PlayMode changed to: $playMode")
-        // 显示提示
-        val modeName = when (playMode) {
-            PlayMode.LIST_LOOP -> "列表循环"
-            PlayMode.RANDOM -> "随机播放"
-            PlayMode.SINGLE_LOOP -> "单曲循环"
-            else -> ""
-        }
-        showToast("$modeName 模式")
-    }
-
-    fun setPlayMode(mode: PlayMode) {
-        playMode = mode
-        _playMode.value = mode
-    }
-
-    fun prepareSong(song: Song, startPosition: Long) {
-        Log.d(TAG, "prepareSong: ${song.title}, pos=$startPosition")
-        mediaPlayer?.release()
-        val mp = MediaPlayer()
-        try {
-            if (song.path.startsWith("content://")) {
-                val uri = Uri.parse(song.path)
-                try {
-                    contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                } catch (e: SecurityException) {
-                    Log.w(TAG, "takePersistableUriPermission failed: ${e.message}")
-                }
-                val afd = contentResolver.openAssetFileDescriptor(uri, "r")
-                if (afd != null) {
-                    mp.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
-                    afd.close()
-                } else {
-                    val tempFile = File(cacheDir, "temp_${System.currentTimeMillis()}.mp3")
-                    contentResolver.openInputStream(uri)?.use { input ->
-                        tempFile.outputStream().use { output -> input.copyTo(output) }
-                    }
-                    if (tempFile.length() > 0) {
-                        mp.setDataSource(tempFile.absolutePath)
-                    } else {
-                        throw IllegalStateException("临时文件为空")
-                    }
-                }
-            } else {
-                mp.setDataSource(song.path)
-            }
-            mp.prepare()
-            mp.seekTo(startPosition.toInt())
-            mp.setOnCompletionListener { playNext() }
-            mediaPlayer = mp
-            currentSong = song
-            // 查找歌曲在播放列表中的索引
-            currentIndex = playlist.indexOfFirst { it.id == song.id }
-            _currentIndexFlow.value = currentIndex
-
-            // 直接设置状态，使用传入的 startPosition 作为进度
-            _playerState.value = PlayerData(
-                currentSong = song,
-                state = PlaybackState.PAUSED,
-                progress = startPosition,
-                duration = song.duration
-            )
-            // 同步更新 MediaSession
-            mediaSession.setPlaybackState(PlaybackStateCompat.Builder()
-                .setState(PlaybackStateCompat.STATE_PAUSED, startPosition, 1f)
-                .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                        PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                        PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
-                .build())
-            updateNotificationAndForeground(song, PlaybackState.PAUSED)
-            progressJob?.cancel()
-        } catch (e: Exception) {
-            Log.e(TAG, "prepareSong error: ${e.message}", e)
-            mp.release()
-        }
-    }
-
-    fun stopPlayback() {
-        mediaPlayer?.stop()
-        mediaPlayer?.release()
-        mediaPlayer = null
-        currentSong = null
-        updateState(null, PlaybackState.STOPPED)
-        stopForeground(true)
-        stopSelf()
-    }
-
-    private fun updateState(song: Song?, state: PlaybackState) {
-        _playerState.value = PlayerData(
-            currentSong = song,
-            state = state,
-            progress = getCurrentPosition(),
-            duration = getDuration()
-        )
-        val pbState = if (state == PlaybackState.PLAYING) PlaybackStateCompat.STATE_PLAYING
-        else PlaybackStateCompat.STATE_PAUSED
-        mediaSession.setPlaybackState(PlaybackStateCompat.Builder()
-            .setState(pbState, getCurrentPosition(), 1f)
-            .setActions(PlaybackStateCompat.ACTION_PLAY_PAUSE or
-                    PlaybackStateCompat.ACTION_SKIP_TO_NEXT or
-                    PlaybackStateCompat.ACTION_SKIP_TO_PREVIOUS)
-            .build())
-    }
-
+    // ------------------- 辅助方法 -------------------
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "音乐播放", NotificationManager.IMPORTANCE_LOW)
-            notificationManager.createNotificationChannel(channel)
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "音乐播放",
+                NotificationManager.IMPORTANCE_LOW
+            )
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
         }
     }
 
-    private fun buildNotification(song: Song?, state: PlaybackState): Notification {
-        if (song == null) {
-            return NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_music_note)
-                .setContentTitle("未播放")
-                .build()
-        }
-
-        val contentIntent = PendingIntent.getActivity(
-            this, 0,
-            Intent(this, MainActivity::class.java).apply { flags = Intent.FLAG_ACTIVITY_SINGLE_TOP },
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-
-        val isPlaying = state == PlaybackState.PLAYING
-        val playActionIcon = if (isPlaying) R.drawable.ic_pause else R.drawable.ic_play
-        val playActionTitle = if (isPlaying) "暂停" else "播放"
-
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .setSmallIcon(R.drawable.ic_music_note)
-            .setLargeIcon(currentCoverBitmap ?: BitmapFactory.decodeResource(resources, R.drawable.ic_music_note))
-            .setContentTitle(song.title)
-            .setContentText(song.artist)
-            .setContentIntent(contentIntent)
-            .addAction(R.drawable.ic_skip_previous, "上一首", createActionIntent("PREV"))
-            .addAction(playActionIcon, playActionTitle, createActionIntent("PLAY_PAUSE"))
-            .addAction(R.drawable.ic_skip_next, "下一首", createActionIntent("NEXT"))
-            .setStyle(androidx.media.app.NotificationCompat.MediaStyle()
-                .setMediaSession(mediaSession.sessionToken)
-                .setShowActionsInCompactView(0, 1, 2))
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(isPlaying)
+    private fun buildMediaItem(song: Song): MediaItem {
+        val uri = if (song.path.startsWith("content://")) Uri.parse(song.path)
+        else Uri.fromFile(File(song.path))
+        val metadata = MediaMetadata.Builder()
+            .setTitle(song.title)
+            .setArtist(song.artist)
+            .setAlbumTitle(song.album ?: "")
+            .build()
+        return MediaItem.Builder()
+            .setUri(uri)
+            .setMediaId(song.id.toString())
+            .setMediaMetadata(metadata)
             .build()
     }
 
-    private fun createActionIntent(action: String): PendingIntent {
-        val intent = Intent(this, NotificationActionReceiver::class.java)
-        intent.action = action
-        return PendingIntent.getBroadcast(
-            this, action.hashCode(), intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+    private fun updateState() {
+        // 优先使用播放器提供的 duration，如果无效则回退到歌曲元数据
+        val playerDuration = player?.duration?.takeIf { it > 0 }
+        val duration = playerDuration ?: (currentSong?.duration ?: 0)
+
+        // 进度：播放器有有效位置时用它，否则保留上次进度（避免变为 0）
+        val playerPosition = player?.currentPosition?.takeIf { it >= 0 }
+        val progress = playerPosition ?: _playerState.value.progress
+
+        _playerState.value = PlayerData(
+            currentSong = currentSong,
+            state = if (player?.isPlaying == true) PlaybackState.PLAYING else PlaybackState.PAUSED,
+            progress = progress,
+            duration = duration
         )
     }
 
-    // ======== 通知与前台服务统一管理（消除权限警告） ========
-    @SuppressLint("MissingPermission")
-    private fun updateNotificationAndForeground(song: Song?, state: PlaybackState) {
-        if (song == null) return
-        val notification = buildNotification(song, state)
+    // 修改 saveCurrentStateAsync 方法（用于播放器暂停等场景）
+    private fun saveCurrentStateAsync() {
+        // 在主线程上调用 saveCurrentState，其中数据库部分会自动切换
+        CoroutineScope(Dispatchers.Main).launch {
+            saveCurrentState()
+        }
+    }
 
-        // 始终确保前台服务运行（即便用户关闭了通知控制，也至少显示一个最小化通知，否则服务可能被杀）
-        val useForeground = if (SettingsPreferences.isNotificationControlEnabled(this)) true else Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU
-        if (useForeground) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
-                )
-            } else {
-                startForeground(NOTIFICATION_ID, notification)
+    // 修改 saveCurrentState 方法，将数据库操作切换到 IO 线程
+    private suspend fun saveCurrentState() {
+        // 确保当前在主线程上获取 player 状态（因为 saveJob 已经切换了，这里主要保护直接调用的场景）
+        withContext(Dispatchers.Main) {
+            val song = currentSong ?: return@withContext
+            val progress = player?.currentPosition ?: 0
+            if (progress == lastSavedProgress) return@withContext
+            lastSavedProgress = progress
+
+            // 构建要保存的状态对象
+            val state = PlaybackStateEntity(
+                currentSongId = song.id,
+                position = progress,
+                playMode = playMode.name
+            )
+
+            // 3. 数据库写入操作切换到 IO 线程，避免阻塞主线程
+            withContext(Dispatchers.IO) {
+                try {
+                    AppDatabase.getDatabase(this@MusicService).playbackStateDao().saveState(state)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Save state error: ${e.message}")
+                }
             }
-        } else {
-            // Android 13+ 且用户关闭了通知权限，不再显示通知但前台服务仍需存在（通过其他方式保证服务存活，实际上如果没有通知权限，前台服务无法启动，这里可考虑停止服务或降级）
-            stopForeground(true)
-            // 尝试移除通知（无需权限，cancel 总是允许）
-            notificationManager.cancel(NOTIFICATION_ID)
         }
     }
 
-    @SuppressLint("MissingPermission")
-    fun updateNotification() {
-        if (currentSong != null && SettingsPreferences.isNotificationControlEnabled(this)) {
-            val state = if (mediaPlayer?.isPlaying == true) PlaybackState.PLAYING else PlaybackState.PAUSED
-            updateNotificationAndForeground(currentSong, state)
-        } else {
-            // 如果通知被禁用，但服务仍在播放，可以停止前台服务或调整
-            hideNotification()
-        }
-    }
-
-    fun hideNotification() {
-        stopForeground(true)
-        notificationManager.cancel(NOTIFICATION_ID)
-    }
-
-    @SuppressLint("MissingPermission")
     private fun showToast(msg: String) {
         Handler(Looper.getMainLooper()).post {
-            Toast.makeText(this@MusicService, msg, Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
         }
     }
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int = START_STICKY
-
-    override fun onDestroy() {
-        runBlocking { saveCurrentState() }
-        mediaPlayer?.release()
-        mediaPlayer = null
-        progressJob?.cancel()
-        mediaSession.release()
-        instance = null
-        super.onDestroy()
-    }
 }
+
+// 数据类与枚举
+data class PlayerData(
+    val currentSong: Song?,
+    val state: PlaybackState,
+    val progress: Long,
+    val duration: Long
+)
+enum class PlaybackState { PLAYING, PAUSED, STOPPED }
+enum class PlayMode { LIST_LOOP, RANDOM, SINGLE_LOOP }

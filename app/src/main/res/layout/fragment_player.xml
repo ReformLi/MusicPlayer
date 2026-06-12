@@ -148,14 +148,20 @@
             android:valueTo="100.0"
             app:thumbColor="?attr/colorPrimary"
             app:trackColorActive="?attr/colorPrimary"
-            app:trackColorInactive="?attr/colorSurfaceVariant" />
+            app:trackColorInactive="?attr/colorSurfaceVariant"
+            app:trackHeight="4dp"
+            app:haloColor="?attr/colorPrimary"
+            app:haloRadius="12dp"
+            app:labelBehavior="gone"/>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
 
             android:orientation="horizontal"
-            android:layout_marginTop="1dp">
+            android:layout_marginTop="1dp"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp">
 
             <TextView
                 android:id="@+id/tvCurrentTime"

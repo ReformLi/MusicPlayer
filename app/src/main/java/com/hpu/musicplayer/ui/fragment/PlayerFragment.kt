@@ -2,6 +2,8 @@ package com.hpu.musicplayer.ui.fragment
 
 import android.app.AlertDialog
 import android.content.DialogInterface
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.util.Log
 import android.view.LayoutInflater
@@ -10,6 +12,7 @@ import android.view.ViewGroup
 import android.widget.PopupMenu
 import android.widget.SeekBar
 import androidx.activity.OnBackPressedCallback
+import androidx.core.content.ContextCompat
 import com.google.android.material.slider.Slider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -69,14 +72,22 @@ class PlayerFragment : Fragment() {
         binding.rvLyrics.layoutManager = LinearLayoutManager(requireContext())
 
         // 使用 viewLifecycleOwner.lifecycleScope 确保视图销毁时自动取消
+        var initialPlayDone = false
         viewLifecycleOwner.lifecycleScope.launch {
             playerViewModel.playerState.collect { data ->
                 updateUI(data)
+                // 冷启动补救：仅在首次、有目标歌曲、且 Service 完全无歌时执行
+                if (!initialPlayDone && songId != -1L && data.currentSong == null) {
+                    initialPlayDone = true
+                    val song = AppDatabase.getDatabase(requireContext()).songDao().getSongById(songId)
+                    if (song != null) {
+                        playerViewModel.play(song)   // 这里只用一次
+                    }
+                }
             }
         }
 
         setupControls()
-        loadCurrentSong()
 
         // 观察剩余时间并显示（例如在 tvSongTitle 下方加一个 TextView）
         viewLifecycleOwner.lifecycleScope.launch {
@@ -120,13 +131,16 @@ class PlayerFragment : Fragment() {
     }
 
     private suspend fun updateUI(data: PlayerData) {
+        // 1. 规范化 duration 和 progress（防止 ExoPlayer 返回无效值）
+        val safeDuration = if (data.duration > 0) data.duration else 0L
+        val safeProgress = data.progress.coerceIn(0L, safeDuration)
+
         val song = data.currentSong
         if (song != null) {
             // 歌曲信息
-            binding.tvSongTitle.text = song.title
-            binding.tvSongArtist.text = song.artist
-            binding.tvCurrentTime.text = formatTime(data.progress)
-            binding.tvTotalTime.text = formatTime(data.duration)
+            // 时间显示（使用安全值）
+            binding.tvCurrentTime.text = formatTime(safeProgress)
+            binding.tvTotalTime.text = formatTime(safeDuration)
 
             // 封面
             val coverPath = song.customCoverPath ?: song.coverPath
@@ -149,10 +163,9 @@ class PlayerFragment : Fragment() {
 //            Log.d("PlayerFragment", "lyricContainer height: ${binding.lyricContainer.height}, rvLyrics height: ${binding.rvLyrics.height}")
             // 歌词高亮与滚动
             if (lrcLines.isNotEmpty()) {
-                val index = lrcLines.indexOfLast { it.time <= data.progress }
+                val index = lrcLines.indexOfLast { it.time <= safeProgress }
                 if (index != -1) {
                     lyricAdapter.updateCurrentIndex(index)
-                    // 居中显示当前歌词
                     val offset = binding.rvLyrics.height / 2
                     (binding.rvLyrics.layoutManager as LinearLayoutManager)
                         .scrollToPositionWithOffset(index, offset)
@@ -163,10 +176,17 @@ class PlayerFragment : Fragment() {
             if (!binding.seekBar.isPressed) {
                 val max = data.duration.coerceAtLeast(1L).toFloat()
                 val pos = data.progress.coerceIn(0L, data.duration).toFloat()
-                binding.seekBar.valueTo = max
-                // 使用 post 确保布局已应用 valueTo 后再设置 value
-                binding.seekBar.post {
-                    binding.seekBar.value = pos
+
+                // 先设置 valueTo，再设置 value，并确保在主线程中一次性完成
+                binding.seekBar.apply {
+                    // 取消可能存在的 pending 更新，避免冲突
+                    removeCallbacks(null)
+                    valueFrom = 0f
+                    valueTo = max
+                    // 直接设置 value（因为已经在主线程）
+                    value = pos
+                    // 可选：强制重新测量
+                    postInvalidate()
                 }
             }
 
@@ -209,25 +229,40 @@ class PlayerFragment : Fragment() {
         lyricAdapter.submitList(lrcLines)
     }
 
-    private fun loadCurrentSong() {
-        if (songId == -1L) return
-
-        // 如果当前正在播放同一首歌，什么都不做（UI 会从 playerState 自动更新）
-        val currentSongId = playerViewModel.playerState.value.currentSong?.id
-        if (currentSongId == songId) return
-
-        // 否则从数据库加载并播放
-        viewLifecycleOwner.lifecycleScope.launch {
-            val db = AppDatabase.Companion.getDatabase(requireContext())
-            val song = db.songDao().getSongById(songId)
-            song?.let { playerViewModel.play(it) }
-        }
-    }
+//    private fun loadCurrentSong() {
+//        if (songId == -1L) return
+//
+//        // 如果当前正在播放同一首歌，什么都不做（UI 会从 playerState 自动更新）
+//        val currentSongId = playerViewModel.playerState.value.currentSong?.id
+//        if (currentSongId == songId) return
+//
+//        // 仅当播放器完全没有歌曲时才加载（例如冷启动从通知进入）
+//        if (currentSongId == null) {
+//            viewLifecycleOwner.lifecycleScope.launch {
+//                val db = AppDatabase.Companion.getDatabase(requireContext())
+//                val song = db.songDao().getSongById(songId)
+//                song?.let { playerViewModel.play(it) }
+//            }
+//        }
+//    }
 
     private fun setupControls() {
         binding.seekBar.valueFrom = 0f
 //        binding.seekBar.valueTo = 100f   // 仅用于初始化，播放后会立即更新
 //        binding.seekBar.value = 0f
+
+        val thumbDrawable = ContextCompat.getDrawable(requireContext(), R.drawable.circle_thumb)
+        if (thumbDrawable != null) {
+            binding.seekBar.setCustomThumbDrawable(thumbDrawable)
+            val radiusPx = 8.dpToPx()  // 8dp 半径，直径 16dp
+            binding.seekBar.setThumbRadius(radiusPx)
+        } else {
+            // 如果资源加载失败，可以设置一个默认颜色或使用其他方式恢复圆形
+            Log.w("PlayerFragment", "Failed to load thumb drawable, using default")
+            binding.seekBar.setCustomThumbDrawable(createDefaultThumbDrawable())
+            val radiusPx = 8.dpToPx()  // 8dp 半径，直径 16dp
+            binding.seekBar.setThumbRadius(radiusPx)
+        }
 
         binding.btnPlayPause.setOnClickListener {
             playerViewModel.togglePlayPause()
@@ -287,10 +322,21 @@ class PlayerFragment : Fragment() {
         }
 
         binding.btnMode.setOnClickListener {
-            Log.d("PlayerFragment", "btnMode clicked")
+//            Log.d("PlayerFragment", "btnMode clicked")
             playerViewModel.cyclePlayMode()
         }
     }
+
+    private fun createDefaultThumbDrawable(): Drawable {
+        return GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(ContextCompat.getColor(requireContext(), R.color.accent_orange))
+            setSize(16.dpToPx(), 16.dpToPx())
+        }
+    }
+
+    // 扩展函数：dp 转 px
+    private fun Int.dpToPx(): Int = (this * resources.displayMetrics.density).toInt()
 
     private fun showLyricFontSizeDialog() {
         val currentSize = LyricConfig.getFontSize(requireContext())

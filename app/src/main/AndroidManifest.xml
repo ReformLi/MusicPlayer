@@ -7,7 +7,10 @@
 
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />  <!-- Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" /> <!-- 前台服务需要 -->
+
+    <!-- Android 14+ 要求明确声明前台服务类型权限（可选，但推荐） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"
         tools:ignore="ForegroundServicesPolicy" />
@@ -42,12 +45,14 @@
 
         <service
             android:name=".service.MusicService"
+            android:enabled="true"
+            android:exported="true"
             android:foregroundServiceType="mediaPlayback"
-            android:exported="false"
-            tools:ignore="ForegroundServicePermission" />
-
-        <receiver android:name=".receiver.NotificationActionReceiver" android:exported="false" />
+            android:permission="android.permission.MEDIA_CONTENT_CONTROL">
+            <intent-filter>
+                <action android:name="androidx.media3.session.MediaSessionService" />
+            </intent-filter>
+        </service>
 
     </application>
-
 </manifest>

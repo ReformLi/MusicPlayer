@@ -14,6 +14,7 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.AppDatabase
@@ -28,12 +29,15 @@ import com.hpu.musicplayer.utils.CoverMigration
 import com.hpu.musicplayer.utils.SettingsPreferences
 import com.hpu.musicplayer.utils.ThemeChangeManager
 import com.hpu.musicplayer.utils.ThemeHelper
+import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import kotlinx.coroutines.launch
 
 class SettingsFragment : Fragment() {
 
     private var _binding: FragmentSettingsBinding? = null
     private val binding get() = _binding!!
+
+    private lateinit var playerViewModel: PlayerViewModel
 
     // 权限请求启动器
     private val requestPermissionLauncher = registerForActivityResult(
@@ -59,6 +63,7 @@ class SettingsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        playerViewModel = ViewModelProvider(requireActivity())[PlayerViewModel::class.java]
 
         setupNotificationControl()
         setupThemeSwitch()
@@ -131,19 +136,17 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    // 启用通知的具体逻辑
-    @SuppressLint("MissingPermission")
+    // 启用通知的具体逻辑（仅保存偏好，不再控制服务）
     private fun enableNotification() {
         SettingsPreferences.setNotificationControlEnabled(requireContext(), true)
-        MusicService.getInstance()?.updateNotification()
-        Toast.makeText(requireContext(), R.string.notification_enabled, Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "通知偏好已保存（新版本中通知始终显示）", Toast.LENGTH_SHORT).show()
+        // 可选：刷新一下通知（新版自动管理，无需手动调用）
     }
 
-    // 禁用通知的具体逻辑
+    // 禁用通知的具体逻辑（仅保存偏好）
     private fun disableNotification() {
         SettingsPreferences.setNotificationControlEnabled(requireContext(), false)
-        MusicService.getInstance()?.hideNotification()
-        Toast.makeText(requireContext(), R.string.notification_disabled, Toast.LENGTH_SHORT).show()
+        Toast.makeText(requireContext(), "通知偏好已保存（通知仍会显示，请关闭系统通知权限以彻底隐藏）", Toast.LENGTH_SHORT).show()
     }
 
     private fun setupThemeSwitch() {
@@ -233,8 +236,8 @@ class SettingsFragment : Fragment() {
 
     private fun resetLibrary() {
         lifecycleScope.launch {
-            // 1. 停止当前播放并清除数据（stopPlayback 会 stopSelf）
-            MusicService.getInstance()?.stopPlayback()
+            // 1. 停止当前播放（通过 ViewModel 发送自定义命令）
+            playerViewModel.stopPlayback()
 
             // 2. 删除数据库内容
             val db = AppDatabase.getDatabase(requireContext())
@@ -243,10 +246,9 @@ class SettingsFragment : Fragment() {
             db.playbackStateDao().saveState(
                 PlaybackStateEntity(currentSongId = -1, position = 0, playMode = PlayMode.LIST_LOOP.name)
             )
-            // 清空保存的私有专辑图片
             CoverMigration.clearAllCovers(requireContext())
 
-            // 3. 重新启动服务（之前被 stopSelf 了）
+            // 3. 重新启动服务（组件操作，直接调用）
             val intent = Intent(requireContext(), MusicService::class.java)
             requireContext().startService(intent)
 
@@ -270,11 +272,11 @@ class SettingsFragment : Fragment() {
     }
 
     private fun exitApp() {
-        // 停止音乐服务
-        MusicService.getInstance()?.stopPlayback()
+        // 停止播放（通过 ViewModel）
+        playerViewModel.stopPlayback()
+        // 停止服务（组件操作）
         val intent = Intent(requireContext(), MusicService::class.java)
         requireContext().stopService(intent)
-
         // 退出应用
         requireActivity().finishAffinity()
     }

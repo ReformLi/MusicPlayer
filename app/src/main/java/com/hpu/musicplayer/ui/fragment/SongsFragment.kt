@@ -18,6 +18,7 @@ import android.widget.ImageView
 import androidx.activity.OnBackPressedCallback
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -36,12 +37,14 @@ class SongsFragment : Fragment() {
 
     private var _binding: FragmentSongsBinding? = null
     private val binding get() = _binding!!
-    private val playerViewModel: PlayerViewModel by viewModels({ requireActivity() })
+    private lateinit var playerViewModel: PlayerViewModel
 
     private var allSongs = emptyList<Song>()
     private lateinit var adapter: SongAdapter
 
     private var currentQuery = ""
+
+    private var ignoreNextPlaylistUpdate = false
 
     // 文件夹选择器
     private val selectFolderLauncher = registerForActivityResult(
@@ -93,12 +96,13 @@ class SongsFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        playerViewModel = ViewModelProvider(requireActivity())[PlayerViewModel::class.java]
 
         // 1. 先创建 adapter
         adapter = SongAdapter(
             onItemClick = { song ->
 //                Toast.makeText(requireContext(), "点击了: ${song.title}", Toast.LENGTH_SHORT).show()
-                playerViewModel.play(song)
+                playerViewModel.playOrResume(song)
                 val action = SongsFragmentDirections.actionSongsFragmentToPlayerFragment(song.id)
                 findNavController().navigate(action)
             },
@@ -115,18 +119,25 @@ class SongsFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             songDao.getAllSongs().collect { songs ->
                 allSongs = songs
-                // 根据 currentQuery 决定显示全部还是过滤
-                val displayList = if (currentQuery.isEmpty()) {
-                    songs
-                } else {
-                    songs.filter {
-                        it.title.contains(currentQuery, true) ||
-                                it.artist.contains(currentQuery, true) ||
-                                it.album.contains(currentQuery, true)
-                    }
+                val displayList = if (currentQuery.isEmpty()) songs
+                else songs.filter {
+                    it.title.contains(currentQuery, true) ||
+                            it.artist.contains(currentQuery, true) ||
+                            it.album.contains(currentQuery, true)
                 }
                 adapter.submitList(displayList)
-                playerViewModel.setPlaylist(songs)   // 播放列表仍然用全部歌曲
+
+                if (ignoreNextPlaylistUpdate) {
+                    ignoreNextPlaylistUpdate = false
+                    // 已经通过 removeSongByIndex 更新了 Service，这里跳过 setPlaylist
+                    Log.d("SongsFragment", "Ignoring playlist update after manual deletion")
+                } else {
+                    // 正常更新（增、改等）
+                    val currentServicePlaylist = MusicService.playlistFlow.value
+                    if (songs != currentServicePlaylist) {
+                        playerViewModel.setPlaylist(songs)
+                    }
+                }
                 binding.emptyView.visibility = if (displayList.isEmpty()) View.VISIBLE else View.GONE
             }
         }
@@ -246,15 +257,20 @@ class SongsFragment : Fragment() {
             .setTitle("删除歌曲")
             .setMessage("确定要删除 ${song.title} 吗？")
             .setPositiveButton("删除") { _, _ ->
-                // 清除私有封面文件
                 CoverMigration.deleteCoverFiles(requireContext(), song.id)
                 lifecycleScope.launch {
-                    val db = AppDatabase.Companion.getDatabase(requireContext())
-                    db.songDao().delete(song)
-                    // 若正在播放该歌曲，停止服务
-                    val service = MusicService.Companion.getInstance()
-                    if (service != null && MusicService.Companion.playerState.value.currentSong?.id == song.id) {
-                        service.stopPlayback()
+                    val db = AppDatabase.getDatabase(requireContext())
+                    val index = allSongs.indexOfFirst { it.id == song.id }
+                    if (index >= 0) {
+                        // 立即从 Service 中移除（播放列表更新）
+                        playerViewModel.removeSongByIndex(index)
+                        // 删除数据库记录，设置忽略标志，避免 Room Flow 再次触发 setPlaylist
+                        ignoreNextPlaylistUpdate = true
+                        db.songDao().delete(song)
+                        // 同时停止播放（如果删除的是当前歌曲）
+                        if (playerViewModel.playerState.value.currentSong?.id == song.id) {
+                            playerViewModel.stopPlayback()
+                        }
                     }
                 }
             }

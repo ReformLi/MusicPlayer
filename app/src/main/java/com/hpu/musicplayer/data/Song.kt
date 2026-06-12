@@ -1,8 +1,12 @@
 package com.hpu.musicplayer.data
 
+import android.os.Parcelable
+import kotlinx.parcelize.Parcelize
+
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
+@Parcelize
 @Entity(tableName = "songs")
 data class Song(
     @PrimaryKey(autoGenerate = true)
@@ -20,4 +24,4 @@ data class Song(
     var customLrcPath: String? = null,     // 用户自定义歌词路径
     var fileSize: Long = 0,               // 文件大小（字节）
     var addedDate: Long = System.currentTimeMillis()   // 新增，默认当前时间
-)
+) : Parcelable

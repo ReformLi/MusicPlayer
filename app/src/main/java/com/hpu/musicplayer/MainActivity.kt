@@ -1,7 +1,9 @@
 package com.hpu.musicplayer
 
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
@@ -38,6 +40,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var navController: NavController
     private var lastBackPressTime = 0L
 
+    private lateinit var playerViewModel: PlayerViewModel
+
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted: Boolean ->
@@ -52,6 +56,8 @@ class MainActivity : AppCompatActivity() {
         // Apply theme before super.onCreate
         applyTheme()
         super.onCreate(savedInstanceState)
+
+        playerViewModel = ViewModelProvider(this)[PlayerViewModel::class.java]
 
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
@@ -148,7 +154,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupMiniPlayer() {
-        val playerViewModel = ViewModelProvider(this)[PlayerViewModel::class.java]
         binding.miniPlayer.root.visibility = View.GONE
 
         lifecycleScope.launch {
@@ -208,7 +213,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshMiniPlayer() {
-        val playerViewModel = ViewModelProvider(this)[PlayerViewModel::class.java]
         val data = playerViewModel.playerState.value
         if (data.currentSong != null) {
             binding.miniPlayer.root.visibility = View.VISIBLE
@@ -248,8 +252,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 AppDatabase.getDatabase(this@MainActivity)
 
-                val intent = Intent(this@MainActivity, MusicService::class.java)
-                startService(intent)
+                startMusicService()
 
                 restorePlaybackState()
 
@@ -258,6 +261,12 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this@MainActivity, "初始化失败: ${e.message}", Toast.LENGTH_LONG).show()
             }
         }
+    }
+
+    //初始化/启动服务
+    private fun startMusicService() {
+        val intent = Intent(this, MusicService::class.java)
+        startForegroundService(intent)
     }
 
     private suspend fun restorePlaybackState() {
@@ -269,17 +278,16 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             PlayMode.LIST_LOOP
         }
+        // 通过 ViewModel 获取当前播放状态
+        if (playerViewModel.playerState.value.currentSong != null) return
 
-        // 如果已经有歌曲在播放/暂停，则不要恢复（保持当前状态）
-        if (MusicService.playerState.value.currentSong != null) return
-
-        val service = MusicService.getInstance() ?: return
-        service.setPlayMode(mode)
+        playerViewModel.setPlayMode(mode)
 
         if (savedState.currentSongId != -1L) {
+
             val song = db.songDao().getSongById(savedState.currentSongId)
             if (song != null) {
-                service.prepareSong(song, savedState.position)
+                playerViewModel.restoreSong(song, savedState.position)
             }
         }
     }
