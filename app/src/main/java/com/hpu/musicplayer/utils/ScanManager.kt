@@ -11,6 +11,7 @@ import android.provider.MediaStore
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
 import com.hpu.musicplayer.data.AppDatabase
+import com.hpu.musicplayer.data.repository.MusicRepository
 import com.hpu.musicplayer.data.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -107,8 +108,9 @@ object ScanManager {
     }
 
     private suspend fun mergeAndSave(context: Context, newSongs: List<Song>) {
+        val repo = MusicRepository.getInstance(context)
         val db = AppDatabase.getDatabase(context)
-        val existingSongs = db.songDao().getAllSongsOnce()
+        val existingSongs = repo.getAllSongsOnce()
 
         val existingMap = mutableMapOf<String, Song>()
         existingSongs.forEach { existingMap[it.path] = it }
@@ -140,9 +142,8 @@ object ScanManager {
         val toDelete = existingSongs.filter { it.path !in currentPaths }
         toDelete.forEach { db.songDao().delete(it) }
 
-        // 全量替换数据库（因为 insertAll 是 replace 策略，会更新现有行）
-        db.songDao().deleteAll()
-        db.songDao().insertAll(mergedSongs)
+        // 对保留/新增的歌曲进行 upsert（insertAll 的 replace 策略）
+        repo.insertSongs(mergedSongs)
         Log.d(TAG, "Incremental scan merged ${mergedSongs.size} songs")
         // 封面迁移（对所有歌曲，无论新旧）
         for (song in mergedSongs) {
@@ -443,11 +444,11 @@ object ScanManager {
     }
 
     private fun saveCoverToCache(context: Context, key: String, data: ByteArray): String {
-        val coverDir = File(context.cacheDir, "album_art")
+        // 使用 filesDir 而非 cacheDir，避免系统清理缓存导致封面丢失
+        val coverDir = File(context.filesDir, "album_art")
         if (!coverDir.exists()) coverDir.mkdirs()
         val coverFile = File(coverDir, "${key}.jpg")
         coverFile.writeBytes(data)
-//        Log.d(TAG, "Cover saved: ${coverFile.absolutePath}")
         return coverFile.absolutePath
     }
 

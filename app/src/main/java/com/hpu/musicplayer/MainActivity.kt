@@ -247,6 +247,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    // 在 onResume 中检查权限是否被撤销
+    override fun onResume() {
+        super.onResume()
+        if (!Permissions.hasStoragePermission(this)) {
+            // 权限已被撤销，通知用户
+            showPermissionDeniedMessage()
+        }
+    }
+
     private fun initializeApp() {
         lifecycleScope.launch {
             try {

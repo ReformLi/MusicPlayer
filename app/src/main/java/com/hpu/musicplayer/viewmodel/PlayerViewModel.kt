@@ -44,6 +44,7 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     // 统一的操作队列：存放 lambda，连接成功后按序执行
     private val pendingActions = mutableListOf<() -> Unit>()
     private var isConnecting = false
+    private val maxPendingActions = 20  // 限制队列最大长度，防止无限增长
 
     // ---------- 定时器 ----------
     private var timerJob: Job? = null
@@ -84,6 +85,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     // 将操作加入队列并尝试连接
     private fun enqueueAction(action: () -> Unit) {
+        if (pendingActions.size >= maxPendingActions) {
+            Log.w("PlayerViewModel", "PendingActions queue full, dropping oldest")
+            pendingActions.removeAt(0)
+        }
         pendingActions.add(action)
         connectToService()
     }
@@ -339,8 +344,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
                 remaining -= 1000
                 _timerRemaining.value = remaining
             }
-            // 时间到，暂停播放
-            mediaController?.pause()
+            // 时间到，停止播放并释放服务资源
+            stopPlayback()
         }
     }
 

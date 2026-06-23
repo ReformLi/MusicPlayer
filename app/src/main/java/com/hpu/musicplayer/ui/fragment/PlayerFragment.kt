@@ -32,7 +32,9 @@ import com.hpu.musicplayer.utils.LrcLine
 import com.hpu.musicplayer.utils.LrcParser
 import com.hpu.musicplayer.utils.LyricConfig
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -78,9 +80,13 @@ class PlayerFragment : Fragment() {
                 // 冷启动补救：仅在首次、有目标歌曲、且 Service 完全无歌时执行
                 if (!initialPlayDone && songId != -1L && data.currentSong == null) {
                     initialPlayDone = true
-                    val song = playerViewModel.getSongById(songId)
-                    if (song != null) {
-                        playerViewModel.play(song)   // 这里只用一次
+                    try {
+                        val song = playerViewModel.getSongById(songId)
+                        if (song != null) {
+                            playerViewModel.play(song)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("PlayerFragment", "Cold start restore failed: ${e.message}")
                     }
                 }
             }
@@ -225,10 +231,21 @@ class PlayerFragment : Fragment() {
     }
 
     private fun loadLyrics(song: Song) {
-        lrcLines = if (song.lrcPath != null) {
-            LrcParser.parse(song.lrcPath)
-        } else emptyList()
-        lyricAdapter.submitList(lrcLines)
+        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
+            val lines = if (song.lrcPath != null) {
+                LrcParser.parse(song.lrcPath)
+            } else emptyList()
+            withContext(Dispatchers.Main) {
+                lrcLines = lines
+                lyricAdapter.submitList(lrcLines)
+                // 歌词加载完成后同步更新"暂无歌词"可见性，避免与异步加载竞态导致重叠
+                if (lrcLines.isEmpty()) {
+                    binding.tvNoLyrics.visibility = View.VISIBLE
+                } else {
+                    binding.tvNoLyrics.visibility = View.GONE
+                }
+            }
+        }
     }
 
 //    private fun loadCurrentSong() {
@@ -274,8 +291,11 @@ class PlayerFragment : Fragment() {
             formatTime(progress.toLong())
         }
 
-        binding.seekBar.addOnChangeListener(Slider.OnChangeListener { slider, value, fromUser ->
-            if (fromUser) playerViewModel.seekTo(value.toLong())
+        binding.seekBar.addOnSliderTouchListener(object : Slider.OnSliderTouchListener {
+            override fun onStartTrackingTouch(slider: Slider) {}
+            override fun onStopTrackingTouch(slider: Slider) {
+                playerViewModel.seekTo(slider.value.toLong())
+            }
         })
 
         binding.btnNext.setOnClickListener {

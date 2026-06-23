@@ -114,10 +114,9 @@ class SongsFragment : Fragment() {
         binding.recyclerViewSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerViewSongs.adapter = adapter
 
-        // 2. 监听数据库歌曲列表
-        val songDao = AppDatabase.Companion.getDatabase(requireContext()).songDao()
+        // 2. 通过 ViewModel 监听数据库歌曲列表（避免直接依赖 DAO）
         viewLifecycleOwner.lifecycleScope.launch {
-            songDao.getAllSongs().collect { songs ->
+            playerViewModel.allSongs.collect { songs ->
                 allSongs = songs
                 val displayList = if (currentQuery.isEmpty()) songs
                 else songs.filter {
@@ -304,7 +303,7 @@ class SongsFragment : Fragment() {
     private fun formatDuration(millis: Long): String {
         val minutes = TimeUnit.MILLISECONDS.toMinutes(millis)
         val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
-        return String.format("%d:%02d", minutes, seconds)
+        return String.format("%02d:%02d", minutes, seconds)
     }
 
     override fun onDestroyView() {

@@ -2,12 +2,20 @@ package com.hpu.musicplayer.service
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
+import android.media.AudioManager.OnAudioFocusChangeListener
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
@@ -31,6 +39,8 @@ import com.hpu.musicplayer.data.repository.MusicRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -90,6 +100,26 @@ class MusicService : MediaSessionService() {
     private var player: ExoPlayer? = null
     private lateinit var mediaSession: MediaSession
     private val repository by lazy { MusicRepository.getInstance(applicationContext) }
+
+    // 音频焦点
+    private var audioManager: AudioManager? = null
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var hasAudioFocus = false
+
+    // WakeLock - 防止 CPU 休眠中断播放
+    private var wakeLock: PowerManager.WakeLock? = null
+
+    // 服务级协程作用域（替代每次新建 CoroutineScope）
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    // 耳机拔出/蓝牙断开广播
+    private val noisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (AudioManager.ACTION_AUDIO_BECOMING_NOISY == intent?.action) {
+                player?.pause()
+            }
+        }
+    }
 
     private var currentSong: Song? = null
     private var playMode = PlayMode.LIST_LOOP
@@ -215,6 +245,12 @@ class MusicService : MediaSessionService() {
     // ------------------- 播放器事件监听 -------------------
     private inner class PlayerEventListener : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
+            if (isPlaying) {
+                acquireAudioFocusIfNeeded()
+                acquireWakeLock()
+            } else {
+                releaseWakeLock()
+            }
             updateState()
         }
 
@@ -242,14 +278,32 @@ class MusicService : MediaSessionService() {
 
         override fun onPlayerError(error: PlaybackException) {
             Log.e(TAG, "Play error: ${error.message}", error)
-            showToast("播放失败: ${error.localizedMessage}")
-            currentSong = null
-            currentIndex = -1
-            _currentIndexFlow.value = -1
-            _playerState.value = PlayerData(null, PlaybackState.STOPPED, 0, 0)
-            player?.stop()
-            stopForeground(true)
-            stopSelf()
+            showToast("播放失败: ${error.localizedMessage ?: "未知错误"}，已自动跳过")
+            // 不杀死服务，改为跳过当前歌曲
+            val currentIdx = currentIndex
+            if (currentIdx >= 0 && playlist.isNotEmpty()) {
+                player?.removeMediaItem(currentIdx)
+                if (playlist.isNotEmpty()) {
+                    currentIndex = currentIdx.coerceIn(0, playlist.size - 1)
+                    if (playlist.isNotEmpty() && currentIndex < playlist.size) {
+                        currentSong = playlist[currentIndex]
+                        player?.prepare()
+                        player?.play()
+                    } else {
+                        // 播放列表为空，停止
+                        currentSong = null
+                        currentIndex = -1
+                        _currentIndexFlow.value = -1
+                        _playerState.value = PlayerData(null, PlaybackState.STOPPED, 0, 0)
+                    }
+                }
+            } else {
+                currentSong = null
+                currentIndex = -1
+                _currentIndexFlow.value = -1
+                _playerState.value = PlayerData(null, PlaybackState.STOPPED, 0, 0)
+            }
+            updateState()
         }
     }
 
@@ -258,6 +312,8 @@ class MusicService : MediaSessionService() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
+        initAudioFocus()
+        initWakeLock()
 
         // 初始化 ExoPlayer
         player = ExoPlayer.Builder(this).build().apply {
@@ -278,8 +334,11 @@ class MusicService : MediaSessionService() {
                 .build()
         )
 
+        // 注册耳机拔出广播
+        registerReceiver(noisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+
         // 启动状态保存协程
-        saveJob = CoroutineScope(Dispatchers.Main).launch {
+        saveJob = serviceScope.launch {
             while (isActive) {
                 delay(5000)
                 saveCurrentState()
@@ -302,8 +361,12 @@ class MusicService : MediaSessionService() {
         runBlocking { saveCurrentState() }
         progressUpdateJob?.cancel()
         saveJob?.cancel()
+        try { unregisterReceiver(noisyReceiver) } catch (_: Exception) {}
         player?.release()
         mediaSession.release()
+        releaseAudioFocus()
+        releaseWakeLock()
+        serviceScope.cancel()
         super.onDestroy()
     }
 
@@ -325,7 +388,7 @@ class MusicService : MediaSessionService() {
     // ------------------- 进度更新 -------------------
     private fun startProgressUpdates() {
         progressUpdateJob?.cancel()
-        progressUpdateJob = CoroutineScope(Dispatchers.Main).launch {
+        progressUpdateJob = serviceScope.launch {
             while (isActive) {
                 if (player?.isPlaying == true) {
                     val playerDuration = player?.duration?.takeIf { it > 0 }
@@ -382,9 +445,11 @@ class MusicService : MediaSessionService() {
     }
 
     fun setPlaylist(songs: List<Song>) {
-        // 如果列表完全一样，直接返回，避免打断播放
-        if (songs == playlist) {
-            Log.d(TAG, "setPlaylist: identical list, skipping")
+        // 如果 ID 列表和当前完全一致（相同顺序），且当前正在播放，跳过避免打断
+        val currentIds = playlist.map { it.id }
+        val newIds = songs.map { it.id }
+        if (currentIds == newIds && currentSong != null) {
+            Log.d(TAG, "setPlaylist: identical IDs, skipping")
             return
         }
 
@@ -576,7 +641,7 @@ class MusicService : MediaSessionService() {
         currentSong = null
         currentIndex = -1
         _currentIndexFlow.value = -1
-        updateState()
+        _playerState.value = PlayerData(null, PlaybackState.STOPPED, 0, 0)
     }
 
     fun clearPlaylist() {
@@ -629,8 +694,11 @@ class MusicService : MediaSessionService() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "音乐播放",
-                NotificationManager.IMPORTANCE_LOW
-            )
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "音乐播放控制通知"
+                setSound(null, null)  // 禁用通知提示音
+            }
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
@@ -679,7 +747,7 @@ class MusicService : MediaSessionService() {
     }
 
     private fun recordPlayHistory(song: Song) {
-        CoroutineScope(Dispatchers.IO).launch {
+        serviceScope.launch {
             try {
                 repository.recordPlayHistory(song)
             } catch (e: Exception) {
@@ -697,44 +765,156 @@ class MusicService : MediaSessionService() {
         val playerPosition = player?.currentPosition?.takeIf { it >= 0 }
         val progress = playerPosition ?: _playerState.value.progress
 
+        val state = when {
+            currentSong == null -> PlaybackState.STOPPED
+            player?.isPlaying == true -> PlaybackState.PLAYING
+            else -> PlaybackState.PAUSED
+        }
+
         _playerState.value = PlayerData(
             currentSong = currentSong,
-            state = if (player?.isPlaying == true) PlaybackState.PLAYING else PlaybackState.PAUSED,
+            state = state,
             progress = progress,
             duration = duration
         )
     }
 
-    // 修改 saveCurrentStateAsync 方法（用于播放器暂停等场景）
+    // 异步保存播放状态
     private fun saveCurrentStateAsync() {
-        // 在主线程上调用 saveCurrentState，其中数据库部分会自动切换
-        CoroutineScope(Dispatchers.Main).launch {
+        serviceScope.launch {
             saveCurrentState()
         }
     }
 
-    // 修改 saveCurrentState 方法，将数据库操作切换到 IO 线程
+    // 保存当前播放状态到数据库
     private suspend fun saveCurrentState() {
-        // 确保当前在主线程上获取 player 状态（因为 saveJob 已经切换了，这里主要保护直接调用的场景）
-        withContext(Dispatchers.Main) {
-            val song = currentSong ?: return@withContext
-            val progress = player?.currentPosition ?: 0
-            if (progress == lastSavedProgress) return@withContext
-            lastSavedProgress = progress
+        val song = currentSong ?: return
+        val progress = withContext(Dispatchers.Main) {
+            player?.currentPosition ?: 0
+        }
+        if (progress == lastSavedProgress) return
+        lastSavedProgress = progress
 
-            // 构建要保存的状态对象
-            val state = PlaybackStateEntity(
-                currentSongId = song.id,
-                position = progress,
-                playMode = playMode.name
-            )
+        val state = PlaybackStateEntity(
+            currentSongId = song.id,
+            position = progress,
+            playMode = playMode.name
+        )
 
-            // 3. 数据库写入操作切换到 IO 线程，避免阻塞主线程
-            try {
-                repository.savePlaybackState(state)
-            } catch (e: Exception) {
-                Log.e(TAG, "Save state error: ${e.message}")
+        try {
+            repository.savePlaybackState(state)
+        } catch (e: Exception) {
+            Log.e(TAG, "Save state error: ${e.message}")
+        }
+    }
+
+    // ------------------- 音频焦点管理 -------------------
+    private fun initAudioFocus() {
+        audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        val focusChangeListener = OnAudioFocusChangeListener { focusChange ->
+            when (focusChange) {
+                AudioManager.AUDIOFOCUS_LOSS -> {
+                    // 永久失去焦点（如其他应用开始播放），暂停并降低音量
+                    Log.d(TAG, "AudioFocus: LOSS")
+                    hasAudioFocus = false
+                    player?.pause()
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
+                    // 暂时失去焦点（如来电），暂停
+                    Log.d(TAG, "AudioFocus: LOSS_TRANSIENT")
+                    hasAudioFocus = false
+                    player?.pause()
+                }
+                AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                    // 短暂失去焦点但可以降音播放（如通知音），降低音量
+                    Log.d(TAG, "AudioFocus: LOSS_TRANSIENT_CAN_DUCK")
+                    player?.volume = 0.3f
+                }
+                AudioManager.AUDIOFOCUS_GAIN -> {
+                    // 重新获得焦点，恢复
+                    Log.d(TAG, "AudioFocus: GAIN")
+                    hasAudioFocus = true
+                    player?.volume = 1.0f
+                }
             }
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+            audioFocusRequest = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(audioAttributes)
+                .setOnAudioFocusChangeListener(focusChangeListener)
+                .build()
+            audioFocusRequest?.let {
+                audioManager?.requestAudioFocus(it)?.let { result ->
+                    hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+                }
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val result = audioManager?.requestAudioFocus(
+                focusChangeListener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+            hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+        }
+    }
+
+    private fun acquireAudioFocusIfNeeded() {
+        if (hasAudioFocus) return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let {
+                audioManager?.requestAudioFocus(it)?.let { result ->
+                    hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+                }
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val result = audioManager?.requestAudioFocus(
+                { focusChange -> /* handled in init */ },
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN
+            )
+            hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
+        }
+        Log.d(TAG, "acquireAudioFocus: $hasAudioFocus")
+    }
+
+    private fun releaseAudioFocus() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            audioFocusRequest?.let { audioManager?.abandonAudioFocusRequest(it) }
+        } else {
+            @Suppress("DEPRECATION")
+            audioManager?.abandonAudioFocus(null)
+        }
+        hasAudioFocus = false
+    }
+
+    // ------------------- WakeLock 管理 -------------------
+    private fun initWakeLock() {
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "MusicPlayer::PlaybackWakeLock"
+        )
+        wakeLock?.setReferenceCounted(false)
+    }
+
+    private fun acquireWakeLock() {
+        wakeLock?.let {
+            if (!it.isHeld) {
+                it.acquire(10 * 60 * 1000L) // 10分钟超时
+            }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        wakeLock?.let {
+            if (it.isHeld) it.release()
         }
     }
 

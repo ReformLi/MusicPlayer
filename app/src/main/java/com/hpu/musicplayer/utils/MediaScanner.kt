@@ -15,6 +15,15 @@ import android.provider.DocumentsContract
 import androidx.documentfile.provider.DocumentFile
 import kotlinx.coroutines.*
 
+/**
+ * 旧版扫描器，已废弃。
+ * 请使用 [ScanManager] 进行所有扫描操作。
+ * 保留此文件仅用于参考旧实现。
+ */
+@Deprecated(
+    message = "Use ScanManager instead",
+    replaceWith = ReplaceWith("ScanManager", "com.hpu.musicplayer.utils.ScanManager")
+)
 object MediaScanner {
 
     private const val TAG = "MediaScanner"
