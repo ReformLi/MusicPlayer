@@ -74,6 +74,7 @@ class MusicService : MediaSessionService() {
         const val ACTION_REMOVE_SONG_INDEX = "REMOVE_SONG_INDEX"
 
         const val ACTION_RESTORE_SONG = "RESTORE_SONG"
+        const val ACTION_ADD_TO_QUEUE = "ADD_TO_QUEUE"
 
         const val EXTRA_SONG = "song"
         const val EXTRA_POSITION = "position"
@@ -151,6 +152,7 @@ class MusicService : MediaSessionService() {
                 .add(SessionCommand(ACTION_SET_PLAY_MODE, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_REMOVE_SONG_INDEX, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_RESTORE_SONG, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_ADD_TO_QUEUE, Bundle.EMPTY))
                 .build()
 
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
@@ -235,6 +237,16 @@ class MusicService : MediaSessionService() {
                     val song = args.getParcelable<Song>(EXTRA_SONG)
                     val position = args.getLong(EXTRA_POSITION, 0L)
                     if (song != null) restoreSong(song, position)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_ADD_TO_QUEUE -> {
+                    val songs = if (Build.VERSION.SDK_INT >= 33) {
+                        args.getParcelableArrayList("songs", Song::class.java)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        args.getParcelableArrayList("songs")
+                    }
+                    if (songs != null) addToQueue(songs)
                     Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 else -> super.onCustomCommand(session, controller, customCommand, args)
@@ -575,6 +587,40 @@ class MusicService : MediaSessionService() {
         )
     }
 
+    fun addToQueue(songs: List<Song>) {
+        if (songs.isEmpty()) return
+
+        val wasEmpty = playlist.isEmpty()
+        val currentSize = playlist.size
+
+        // 过滤掉已经在播放队列中的歌曲（按 id 去重）
+        val existingIds = playlist.map { it.id }.toSet()
+        val newSongs = songs.filter { it.id !in existingIds }
+
+        if (newSongs.isEmpty()) {
+            showToast("歌曲已在播放队列中")
+            return
+        }
+
+        // 添加到内存列表
+        playlist.addAll(newSongs)
+        _playlistFlow.value = playlist.toList()
+
+        // 添加到 ExoPlayer
+        val newMediaItems = newSongs.map { buildMediaItem(it) }
+        player?.addMediaItems(newMediaItems)
+
+        // 如果之前队列为空，自动播放第一首新增的歌曲
+        if (wasEmpty && playlist.isNotEmpty()) {
+            currentIndex = 0
+            _currentIndexFlow.value = 0
+            playAtIndex(0)
+        }
+
+        showToast("已添加 ${newSongs.size} 首歌曲到播放队列")
+        saveCurrentStateAsync()
+    }
+
     fun cyclePlayMode() {
         val newMode = when (playMode) {
             PlayMode.LIST_LOOP -> PlayMode.RANDOM
@@ -668,6 +714,11 @@ class MusicService : MediaSessionService() {
 
     fun removeSongPermanently(index: Int) {
         if (index !in playlist.indices) return
+        
+        // 从 ExoPlayer 中移除对应媒体项
+        player?.removeMediaItem(index)
+        
+        // 从本地列表移除
         playlist.removeAt(index)
         _playlistFlow.value = playlist.toList()
 

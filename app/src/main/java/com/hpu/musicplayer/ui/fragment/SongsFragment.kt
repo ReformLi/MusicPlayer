@@ -101,14 +101,14 @@ class SongsFragment : Fragment() {
         // 1. 先创建 adapter
         adapter = SongAdapter(
             onItemClick = { song ->
-//                Toast.makeText(requireContext(), "点击了: ${song.title}", Toast.LENGTH_SHORT).show()
                 playerViewModel.playOrResume(song)
                 val action = SongsFragmentDirections.actionSongsFragmentToPlayerFragment(song.id)
                 findNavController().navigate(action)
             },
             onDeleteClick = { song -> deleteSong(song) },
             onInfoClick = { song -> showSongInfo(song) },
-            onFavoriteClick = { song -> toggleFavorite(song) }
+            onFavoriteClick = { song -> toggleFavorite(song) },
+            onAddToQueueClick = { song -> addToQueue(song) }
         )
 
         binding.recyclerViewSongs.layoutManager = LinearLayoutManager(requireContext())
@@ -298,6 +298,10 @@ class SongsFragment : Fragment() {
             AppDatabase.Companion.getDatabase(requireContext()).songDao().insertAll(listOf(updated))
             // 因为 Room 主键冲突会替换，ListAdapter 会通过 collect 自动刷新
         }
+    }
+
+    private fun addToQueue(song: Song) {
+        playerViewModel.addToQueue(listOf(song))
     }
 
     private fun formatDuration(millis: Long): String {

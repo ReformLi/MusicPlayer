@@ -87,4 +87,7 @@
     <color name="gray_light">#FFF5F5F5</color>
     <color name="gray_medium">#FF9E9E9E</color>
     <color name="gray_dark">#FF424242</color>
+    
+    <!-- Current song highlight background -->
+    <color name="current_song_bg">#1AFF9800</color>
 </resources>

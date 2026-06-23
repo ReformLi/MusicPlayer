@@ -246,17 +246,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         sendCustomCommandInternal("STOP_PLAYBACK")
     }
 
-    fun removeSong(index: Int) {
-        if (mediaController == null) {
-            enqueueAction { removeSong(index) }
-            return
-        }
-        val bundle = Bundle().apply {
-            putInt(MusicService.EXTRA_INDEX, index)
-        }
-        sendCustomCommandInternal(MusicService.ACTION_REMOVE_SONG, bundle)
-    }
-
     // 这两个通知操作如果不再使用可以删除
     fun updateNotification() {
         if (mediaController == null) {
@@ -295,6 +284,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             putLong(MusicService.EXTRA_POSITION, position)
         }
         sendCustomCommandInternal(MusicService.ACTION_RESTORE_SONG, bundle)
+    }
+
+    fun addToQueue(songs: List<Song>) {
+        if (mediaController == null) {
+            enqueueAction { addToQueue(songs) }
+            return
+        }
+        val bundle = Bundle().apply {
+            putParcelableArrayList("songs", ArrayList(songs))
+        }
+        sendCustomCommandInternal(MusicService.ACTION_ADD_TO_QUEUE, bundle)
     }
 
     suspend fun getSongById(id: Long): Song? {

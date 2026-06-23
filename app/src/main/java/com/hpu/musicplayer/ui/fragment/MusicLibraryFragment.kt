@@ -41,7 +41,8 @@ class MusicLibraryFragment : Fragment() {
             },
             onDeleteClick = {},
             onInfoClick = {},
-            onFavoriteClick = {}
+            onFavoriteClick = {},
+            onAddToQueueClick = {}
         )
 
         binding.recyclerViewSongs.layoutManager = LinearLayoutManager(requireContext())

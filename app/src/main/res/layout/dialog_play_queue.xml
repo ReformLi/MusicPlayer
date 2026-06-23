@@ -105,14 +105,23 @@
                             android:textColor="?attr/colorOnSurfaceVariant" />
                     </LinearLayout>
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/tvClearAll"
-                        style="@style/Widget.Material3.Button.TextButton"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="清空"
-                        android:textColor="?attr/colorError"
-                        app:cornerRadius="20dp" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/tvReloadAll"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="重新加载全部"
+                    android:textColor="?attr/colorPrimary"
+                    app:cornerRadius="20dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/tvClearAll"
+                    style="@style/Widget.Material3.Button.TextButton"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="清空"
+                    android:textColor="?attr/colorError"
+                    app:cornerRadius="20dp" />
                 </LinearLayout>
 
                 <!-- 歌曲列表 -->

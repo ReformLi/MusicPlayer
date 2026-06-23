@@ -56,7 +56,8 @@ class FavoritesFragment : Fragment() {
             },
             onDeleteClick = { song -> removeFavorite(song) },  // 实际不会触发，但必须传
             onInfoClick = { song -> showSongInfo(song) },
-            onFavoriteClick = { song -> toggleFavorite(song) }
+            onFavoriteClick = { song -> toggleFavorite(song) },
+            onAddToQueueClick = {}
         )
 
         binding.recyclerViewSongs.layoutManager = LinearLayoutManager(requireContext())

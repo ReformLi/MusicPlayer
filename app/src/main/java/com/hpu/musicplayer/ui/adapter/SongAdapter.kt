@@ -23,11 +23,12 @@ import java.util.concurrent.TimeUnit
 
 class SongAdapter(
     private val showMenu: Boolean = true,
-    private val showDeleteMenu: Boolean = true,   // 新增：是否显示“删除”菜单
+    private val showDeleteMenu: Boolean = true,   // 新增：是否显示"删除"菜单
     private val onItemClick: (Song) -> Unit,
     private val onDeleteClick: (Song) -> Unit,
     private val onInfoClick: (Song) -> Unit,
-    private val onFavoriteClick: (Song) -> Unit
+    private val onFavoriteClick: (Song) -> Unit,
+    private val onAddToQueueClick: (Song) -> Unit
 ) : ListAdapter<Song, SongAdapter.ViewHolder>(DiffCallback()) {
 
     // 当前播放歌曲的 ID，-1 表示无
@@ -73,6 +74,10 @@ class SongAdapter(
             popup.setForceShowIcons()   // 反射强制显示图标
             popup.setOnMenuItemClickListener { menuItem ->
                 when (menuItem.itemId) {
+                    R.id.action_add_to_queue -> {
+                        onAddToQueueClick(getItem(holder.bindingAdapterPosition))
+                        true
+                    }
                     R.id.action_delete -> {
                         onDeleteClick(getItem(holder.bindingAdapterPosition))
                         true

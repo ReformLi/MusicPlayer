@@ -60,4 +60,7 @@
     <color name="gray_dark">#FF938F99</color>
     <color name="black">#FF000000</color>
     <color name="white">#FFFFFFFF</color>
+    
+    <!-- Current song highlight background -->
+    <color name="current_song_bg">#1AFFB74D</color>
 </resources>
