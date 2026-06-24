@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="wrap_content"
+    android:layout_height="32dp"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:background="@drawable/bg_dropdown"
+    android:paddingStart="10dp"
+    android:paddingEnd="6dp"
+    android:clickable="true"
+    android:focusable="true">
+
+    <TextView
+        android:id="@+id/tvTimeRange"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="最近一周"
+        android:textSize="12sp"
+        android:textColor="?attr/colorOnSurface"
+        android:singleLine="true" />
+
+    <ImageView
+        android:layout_width="12dp"
+        android:layout_height="12dp"
+        android:layout_marginStart="2dp"
+        android:src="@drawable/ic_arrow_dropdown"
+        android:tint="?attr/colorOnSurfaceVariant"
+        android:alpha="0.6" />
+</LinearLayout>

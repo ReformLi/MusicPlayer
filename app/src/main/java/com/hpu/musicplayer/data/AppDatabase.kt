@@ -12,7 +12,7 @@ import com.hpu.musicplayer.data.dao.SongDao
 
 @Database(
     entities = [Song::class, PlayHistory::class, PlaybackStateEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -25,15 +25,46 @@ abstract class AppDatabase : RoomDatabase() {
         private var INSTANCE: AppDatabase? = null
 
         /**
-         * 数据库迁移定义。
-         * 当前版本为 1，无需迁移。
-         * 升级数据库版本时，必须在此添加对应的 Migration 对象。
-         * 示例:
-         *   val MIGRATION_1_2 = object : Migration(1, 2) {
-         *       override fun migrate(db: SupportSQLiteDatabase) { ... }
-         *   }
+         * Migration 1 → 2：play_history 表结构变更
+         * - 主键从 songId 改为 id（自增）
+         * - 新增 endTime、thisDuration 字段
          */
-        private val ALL_MIGRATIONS = emptyArray<Migration>()
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. 创建新表
+                db.execSQL("""
+                    CREATE TABLE play_history_new (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        songId INTEGER NOT NULL,
+                        title TEXT NOT NULL,
+                        artist TEXT NOT NULL,
+                        album TEXT NOT NULL,
+                        duration INTEGER NOT NULL,
+                        path TEXT NOT NULL,
+                        coverPath TEXT,
+                        lrcPath TEXT,
+                        playedAt INTEGER NOT NULL,
+                        endTime INTEGER,
+                        thisDuration INTEGER NOT NULL DEFAULT 0
+                    )
+                """)
+
+                // 2. 迁移现有数据（旧主键 songId → 普通字段，endTime=playedAt 作为默认）
+                db.execSQL("""
+                    INSERT INTO play_history_new 
+                        (songId, title, artist, album, duration, path, coverPath, lrcPath, playedAt, endTime, thisDuration)
+                    SELECT 
+                        songId, title, artist, album, duration, path, coverPath, lrcPath, playedAt, playedAt, 0
+                    FROM play_history
+                """)
+
+                // 3. 删除旧表，重命名新表
+                db.execSQL("DROP TABLE play_history")
+                db.execSQL("ALTER TABLE play_history_new RENAME TO play_history")
+            }
+        }
+
+        private val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2)
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
@@ -43,7 +74,7 @@ abstract class AppDatabase : RoomDatabase() {
                     "music_db"
                 )
                     .addMigrations(*ALL_MIGRATIONS)
-                    .fallbackToDestructiveMigration() // 兜底：无匹配迁移时重建数据库
+                    .fallbackToDestructiveMigration()
                     .build()
 
                 INSTANCE = instance
@@ -52,4 +83,3 @@ abstract class AppDatabase : RoomDatabase() {
         }
     }
 }
-

@@ -17,7 +17,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            app:layout_constraintGuide_percent="0.10" />
+            app:layout_constraintGuide_percent="0.05" />
 
         <!-- 右侧引导线 -->
         <androidx.constraintlayout.widget.Guideline
@@ -25,7 +25,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            app:layout_constraintGuide_percent="0.85" />
+            app:layout_constraintGuide_percent="0.95" />
 
         <!-- 顶部引导线：屏幕高度的30% -->
         <androidx.constraintlayout.widget.Guideline
@@ -113,7 +113,7 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="80dp"
+                                android:layout_width="64dp"
                                 android:layout_height="wrap_content"
                                 android:text="标题:"
                                 android:textAppearance="@style/TextAppearance.HpuMusicPlayer.LabelMedium"
@@ -124,6 +124,8 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
+                                android:singleLine="true"
+                                android:ellipsize="end"
                                 android:text="歌曲标题"
                                 android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
                                 android:textColor="?attr/colorOnSurface" />
@@ -137,7 +139,7 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="80dp"
+                                android:layout_width="64dp"
                                 android:layout_height="wrap_content"
                                 android:text="艺术家:"
                                 android:textAppearance="@style/TextAppearance.HpuMusicPlayer.LabelMedium"
@@ -148,6 +150,8 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
+                                android:singleLine="true"
+                                android:ellipsize="end"
                                 android:text="艺术家"
                                 android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
                                 android:textColor="?attr/colorOnSurface" />
@@ -161,7 +165,7 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="80dp"
+                                android:layout_width="64dp"
                                 android:layout_height="wrap_content"
                                 android:text="专辑:"
                                 android:textAppearance="@style/TextAppearance.HpuMusicPlayer.LabelMedium"
@@ -172,6 +176,8 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
+                                android:singleLine="true"
+                                android:ellipsize="end"
                                 android:text="专辑名称"
                                 android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
                                 android:textColor="?attr/colorOnSurface" />
@@ -185,7 +191,7 @@
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="80dp"
+                                android:layout_width="64dp"
                                 android:layout_height="wrap_content"
                                 android:text="时长:"
                                 android:textAppearance="@style/TextAppearance.HpuMusicPlayer.LabelMedium"
@@ -196,6 +202,7 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
+                                android:singleLine="true"
                                 android:text="00:00"
                                 android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
                                 android:textColor="?attr/colorOnSurface" />
@@ -205,12 +212,13 @@
                         <LinearLayout
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
+                            android:layout_marginBottom="8dp"
                             android:orientation="horizontal">
 
                             <TextView
-                                android:layout_width="80dp"
+                                android:layout_width="64dp"
                                 android:layout_height="wrap_content"
-                                android:text="播放时间:"
+                                android:text="开始时间:"
                                 android:textAppearance="@style/TextAppearance.HpuMusicPlayer.LabelMedium"
                                 android:textColor="?attr/colorOnSurfaceVariant" />
 
@@ -219,7 +227,61 @@
                                 android:layout_width="0dp"
                                 android:layout_height="wrap_content"
                                 android:layout_weight="1"
+                                android:singleLine="true"
+                                android:ellipsize="end"
                                 android:text="2024-01-01 12:00"
+                                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+                                android:textColor="?attr/colorOnSurface" />
+                        </LinearLayout>
+
+                        <!-- 结束时间 -->
+                        <LinearLayout
+                            android:id="@+id/layoutEndTime"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginBottom="8dp"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="64dp"
+                                android:layout_height="wrap_content"
+                                android:text="结束时间:"
+                                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.LabelMedium"
+                                android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            <TextView
+                                android:id="@+id/tvEndTime"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:singleLine="true"
+                                android:ellipsize="end"
+                                android:text="2024-01-01 12:05"
+                                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+                                android:textColor="?attr/colorOnSurface" />
+                        </LinearLayout>
+
+                        <!-- 收听时长 -->
+                        <LinearLayout
+                            android:id="@+id/layoutListenTime"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="64dp"
+                                android:layout_height="wrap_content"
+                                android:text="收听时长:"
+                                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.LabelMedium"
+                                android:textColor="?attr/colorOnSurfaceVariant" />
+
+                            <TextView
+                                android:id="@+id/tvListenTime"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:singleLine="true"
+                                android:text="00:00"
                                 android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
                                 android:textColor="?attr/colorOnSurface" />
                         </LinearLayout>
@@ -227,39 +289,14 @@
                     </LinearLayout>
                 </com.google.android.material.card.MaterialCardView>
 
-                <!-- 操作按钮 -->
-                <LinearLayout
+                <!-- 关闭按钮 -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnClose"
+                    style="@style/Widget.Material3.Button.OutlinedButton"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:baselineAligned="false"
-                    android:orientation="horizontal">
-
-                    <!-- 播放按钮 -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnPlay"
-                        style="@style/Widget.Material3.Button.ElevatedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginEnd="5dp"
-                        android:layout_weight="1"
-                        android:text="播放"
-                        android:textColor="@android:color/white"
-                        app:backgroundTint="@color/primary_purple"
-                        app:cornerRadius="16dp"
-                        app:iconGravity="textStart" />
-
-                    <!-- 关闭按钮 -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnClose"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="8dp"
-                        android:layout_weight="1"
-                        android:text="关闭"
-                        android:textColor="@android:color/black"
-                        app:cornerRadius="16dp" />
-                </LinearLayout>
+                    android:text="关闭"
+                    app:cornerRadius="16dp" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

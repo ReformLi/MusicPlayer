@@ -12,7 +12,8 @@
         android:layout_width="match_parent"
         android:layout_height="40dp"
         android:layout_margin="12dp"
-        android:layout_marginBottom="8dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="4dp"
         android:clickable="true"
         android:focusable="true"
         android:foreground="?attr/selectableItemBackground"
@@ -43,7 +44,7 @@
                 android:layout_height="match_parent"
                 android:layout_weight="1"
                 android:background="@android:color/transparent"
-                android:hint="搜索本地音乐"
+                android:hint="搜索播放历史"
                 android:textColor="?attr/colorOnSurface"
                 android:textColorHint="?attr/colorOnSurfaceVariant"
                 android:textSize="14sp"
@@ -84,5 +85,4 @@
         android:textColor="?attr/colorOnSurfaceVariant"
         android:textSize="18sp"
         android:visibility="gone" />
-
 </LinearLayout>

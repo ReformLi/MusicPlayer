@@ -133,6 +133,11 @@ class MusicService : MediaSessionService() {
     private var pendingSeekIndex = -1
     private var pendingSeekPosition = 0L
 
+    // 播放统计：实际收听时长追踪
+    private var sessionListenTimeMs: Long = 0L
+    private var lastKnownPosition: Long = 0L
+    private var currentHistoryId: Long = 0L
+
     // ------------------- MediaSession 回调 -------------------
     private inner class MySessionCallback : MediaSession.Callback {
         @UnstableApi
@@ -274,8 +279,8 @@ class MusicService : MediaSessionService() {
                 currentSong = playlist[currentIndex]
                 _currentIndexFlow.value = currentIndex
                 updateState()
-                if (reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED && player?.playWhenReady == true) {
-                    recordPlayHistory(currentSong!!)
+                if (player?.playWhenReady == true) {
+                    transitionHistory(currentSong!!)
                     saveCurrentStateAsync()
                 }
             }
@@ -370,7 +375,10 @@ class MusicService : MediaSessionService() {
     }
 
     override fun onDestroy() {
-        runBlocking { saveCurrentState() }
+        runBlocking {
+            finalizeCurrentHistory()
+            saveCurrentState()
+        }
         progressUpdateJob?.cancel()
         saveJob?.cancel()
         try { unregisterReceiver(noisyReceiver) } catch (_: Exception) {}
@@ -407,6 +415,13 @@ class MusicService : MediaSessionService() {
                     val duration = playerDuration ?: (currentSong?.duration ?: 0)
                     val position = player?.currentPosition?.coerceAtLeast(0) ?: _playerState.value.progress
 
+                    // 累计实际收听时长（排除 seek 跳跃区间）
+                    val diff = position - lastKnownPosition
+                    if (diff in 1..2000) {
+                        sessionListenTimeMs += diff
+                    }
+                    lastKnownPosition = position
+
                     _playerState.value = _playerState.value.copy(
                         progress = position,
                         duration = duration
@@ -437,6 +452,8 @@ class MusicService : MediaSessionService() {
             return
         }
 
+        // 歌曲不在当前播放列表中：直接替换播放
+        transitionHistory(song)
         val mediaItem = buildMediaItem(song)
         player?.apply {
             stop()
@@ -452,7 +469,6 @@ class MusicService : MediaSessionService() {
         _currentIndexFlow.value = 0
         _playlistFlow.value = playlist.toList()
         updateState()
-        recordPlayHistory(song)
         saveCurrentStateAsync()
     }
 
@@ -510,6 +526,7 @@ class MusicService : MediaSessionService() {
         val song = playlist[safeIndex]
         if (handleSameSongPlayback(song)) return
 
+        transitionHistory(song)
         Log.d(TAG, "playAtIndex: seeking to $safeIndex and playing")
         currentIndex = safeIndex
         currentSong = song
@@ -523,7 +540,6 @@ class MusicService : MediaSessionService() {
             }
         }
         updateState()
-        recordPlayHistory(song)
         saveCurrentStateAsync()
     }
 
@@ -682,6 +698,7 @@ class MusicService : MediaSessionService() {
     }
 
     fun stopPlayback() {
+        serviceScope.launch { finalizeCurrentHistory() }
         player?.stop()
         player?.clearMediaItems()
         currentSong = null
@@ -797,13 +814,39 @@ class MusicService : MediaSessionService() {
         }
     }
 
-    private fun recordPlayHistory(song: Song) {
+    private suspend fun recordPlayHistory(song: Song): Long {
+        return try {
+            val id = repository.recordPlayHistory(song)
+            // 重置当前会话的收听计时
+            sessionListenTimeMs = 0L
+            lastKnownPosition = 0L
+            id
+        } catch (e: Exception) {
+            Log.e(TAG, "Record play history error: ${e.message}", e)
+            0L
+        }
+    }
+
+    /** 结束当前历史记录的播放，写入 endTime 和 thisDuration */
+    private suspend fun finalizeCurrentHistory() {
+        if (currentHistoryId == 0L) return
+        val id = currentHistoryId
+        val duration = sessionListenTimeMs
+        val endTime = System.currentTimeMillis()
+        currentHistoryId = 0L
+        try {
+            repository.finishPlayHistory(id, endTime, duration)
+            Log.d(TAG, "Finalized history id=$id, duration=${duration}ms")
+        } catch (e: Exception) {
+            Log.e(TAG, "Finalize history error: ${e.message}", e)
+        }
+    }
+
+    /** 开始新歌播放：结束旧记录 + 创建新记录 */
+    private fun transitionHistory(song: Song) {
         serviceScope.launch {
-            try {
-                repository.recordPlayHistory(song)
-            } catch (e: Exception) {
-                Log.e(TAG, "Record play history error: ${e.message}", e)
-            }
+            finalizeCurrentHistory()
+            currentHistoryId = recordPlayHistory(song)
         }
     }
 

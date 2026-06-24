@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_time_range"
+        android:title="最近一周"
+        app:showAsAction="always"
+        app:actionLayout="@layout/action_time_range_dropdown" />
+    <item
+        android:id="@+id/action_options"
+        android:title="选项"
+        android:icon="@drawable/ic_more_vert"
+        app:showAsAction="always" />
+</menu>

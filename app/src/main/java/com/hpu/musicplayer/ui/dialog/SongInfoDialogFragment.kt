@@ -9,20 +9,15 @@ import androidx.fragment.app.DialogFragment
 import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.PlayHistory
 import com.hpu.musicplayer.databinding.DialogSongInfoBinding
-import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.ViewModelProvider
-import kotlinx.coroutines.launch
 
 class SongInfoDialogFragment : DialogFragment() {
 
     private var _binding: DialogSongInfoBinding? = null
     private val binding get() = _binding!!
     private var history: PlayHistory? = null
-    private lateinit var playerViewModel: PlayerViewModel
     private var isViewCreated = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -47,9 +42,6 @@ class SongInfoDialogFragment : DialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // 初始化 ViewModel
-        playerViewModel = ViewModelProvider(requireActivity())[PlayerViewModel::class.java]
-
         // 点击外部区域关闭
         binding.rootLayout.setOnClickListener { dismiss() }
         binding.dialogContent.setOnClickListener { } // 拦截点击内部不关闭
@@ -60,39 +52,38 @@ class SongInfoDialogFragment : DialogFragment() {
     }
 
     private fun setupClickListeners() {
-        binding.btnPlay.setOnClickListener {
-            history?.let { playHistory ->
-                // 创建 Song 对象并播放
-                val song = com.hpu.musicplayer.data.Song(
-                    id = playHistory.songId,
-                    title = playHistory.title,
-                    artist = playHistory.artist,
-                    album = playHistory.album,
-                    duration = playHistory.duration,
-                    path = playHistory.path,
-                    coverPath = playHistory.coverPath,
-                    lrcPath = playHistory.lrcPath
-                )
-                playerViewModel?.play(song)
-                dismiss()
-            }
-        }
-
         binding.btnClose.setOnClickListener {
             dismiss()
         }
     }
 
     private fun updateContent() {
-        if (!isViewCreated || !::playerViewModel.isInitialized) return
+        if (!isViewCreated) return
 
         history?.let { playHistory ->
             binding.tvTitle.text = playHistory.title
             binding.tvArtist.text = playHistory.artist
             binding.tvAlbum.text = playHistory.album
-            binding.tvDuration.text = formatDuration(playHistory.duration)
+            binding.tvDuration.text = "总长 " + formatDuration(playHistory.duration)
             binding.tvPlayTime.text = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
                 .format(Date(playHistory.playedAt))
+
+            // 结束时间
+            if (playHistory.endTime != null) {
+                binding.tvEndTime.text = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+                    .format(Date(playHistory.endTime))
+                binding.layoutEndTime.visibility = View.VISIBLE
+            } else {
+                binding.layoutEndTime.visibility = View.GONE
+            }
+
+            // 收听时长（始终显示）
+            if (playHistory.endTime == null) {
+                binding.tvListenTime.text = "播放中..."
+            } else {
+                binding.tvListenTime.text = formatDuration(playHistory.thisDuration)
+            }
+            binding.layoutListenTime.visibility = View.VISIBLE
         }
     }
 
