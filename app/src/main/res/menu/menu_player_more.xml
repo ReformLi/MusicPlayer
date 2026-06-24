@@ -12,4 +12,8 @@
         android:id="@+id/action_lyric_font_size"
         android:icon="@drawable/ic_format_size"
         android:title="歌词字体大小" />
+    <item
+        android:id="@+id/action_lyric_offset"
+        android:icon="@drawable/ic_offset"
+        android:title="歌词偏移调整" />
 </menu>

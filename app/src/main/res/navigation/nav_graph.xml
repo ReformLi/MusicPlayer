@@ -22,7 +22,15 @@
         <argument
             android:name="songId"
             app:argType="long" />
+        <action
+            android:id="@+id/action_playerFragment_to_fullscreenLyricsFragment"
+            app:destination="@id/fullscreenLyricsFragment" />
     </fragment>
+
+    <fragment
+        android:id="@+id/fullscreenLyricsFragment"
+        android:name="com.hpu.musicplayer.ui.fragment.FullscreenLyricsFragment"
+        android:label="全屏歌词" />
 
 <!--    <fragment-->
 <!--        android:id="@+id/playQueueFragment"-->

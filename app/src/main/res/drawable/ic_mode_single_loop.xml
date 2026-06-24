@@ -5,19 +5,13 @@
     android:viewportHeight="24"
     android:tint="?attr/colorOnSurface">
 
-    <!-- 原图标上半部分 -->
+    <!-- 原始的双箭头循环路径，保持不变 -->
     <path
         android:fillColor="@android:color/white"
-        android:pathData="M7,7h10v3l4,-4 -4,-4v3L5,5v6h2L7,7z" />
+        android:pathData="M7,7h10v3l4,-4 -4,-4v3L5,5v6h2L7,7zM17,17L7,17v-3l-4,4 4,4v-3h12v-6h-2v4z"/>
 
-    <!-- 原图标下半部分 -->
+    <!-- 重新设计的数字“1”，顶部带倾斜，更像真正的手写/印刷体 -->
     <path
         android:fillColor="@android:color/white"
-        android:pathData="M17,17L7,17v-3l-4,4 4,4v-3h12v-6h-2v4z" />
-
-    <!-- 实心数字 1（缩小并居中，不与箭头接触） -->
-    <path
-        android:fillColor="@android:color/white"
-        android:pathData="M11,7.8 h2 v8.4 h-2 Z M10.5,7.8 h3 v1.2 h-3 Z" />
-
+        android:pathData="M12,9 l-2,2h1.5v4h2v-6z"/>
 </vector>

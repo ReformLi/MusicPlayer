@@ -19,6 +19,7 @@ import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.Song
@@ -71,6 +72,32 @@ class PlayerFragment : Fragment() {
         lyricAdapter.fontSizeSp = LyricConfig.getFontSize(requireContext())
         binding.rvLyrics.adapter = lyricAdapter
         binding.rvLyrics.layoutManager = LinearLayoutManager(requireContext())
+        // rvLyrics 会消费触摸事件（用于滚动），导致 lyricContainer 收不到点击
+        // 通过触摸监听拦截：手指按下和抬起在同一 item 内且没有滚动时，视为点击
+        binding.rvLyrics.addOnItemTouchListener(object : RecyclerView.OnItemTouchListener {
+            private var downX = 0f
+            private var downY = 0f
+            override fun onInterceptTouchEvent(rv: RecyclerView, e: android.view.MotionEvent): Boolean {
+                when (e.action) {
+                    android.view.MotionEvent.ACTION_DOWN -> {
+                        downX = e.rawX
+                        downY = e.rawY
+                    }
+                    android.view.MotionEvent.ACTION_UP -> {
+                        val dx = Math.abs(e.rawX - downX)
+                        val dy = Math.abs(e.rawY - downY)
+                        if (dx < 10f && dy < 10f) {
+                            // 视为点击，触发 lyricContainer 的点击逻辑
+                            binding.lyricContainer.performClick()
+                            return true
+                        }
+                    }
+                }
+                return false
+            }
+            override fun onTouchEvent(rv: RecyclerView, e: android.view.MotionEvent) {}
+            override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {}
+        })
 
         // 使用 viewLifecycleOwner.lifecycleScope 确保视图销毁时自动取消
         var initialPlayDone = false
@@ -93,6 +120,14 @@ class PlayerFragment : Fragment() {
         }
 
         setupControls()
+
+        // 点击歌词区域进入全屏歌词
+        // 用 onClickListener + clickable=true（布局已设置），并在点击时 Toast 反馈
+        binding.lyricContainer.setOnClickListener {
+            android.widget.Toast.makeText(requireContext(), "进入全屏歌词", android.widget.Toast.LENGTH_SHORT).show()
+            Log.d("PlayerFragment", "lyricContainer clicked")
+            findNavController().navigate(R.id.action_playerFragment_to_fullscreenLyricsFragment)
+        }
 
         // 观察剩余时间并显示（例如在 tvSongTitle 下方加一个 TextView）
         viewLifecycleOwner.lifecycleScope.launch {
@@ -171,7 +206,9 @@ class PlayerFragment : Fragment() {
 //            Log.d("PlayerFragment", "lyricContainer height: ${binding.lyricContainer.height}, rvLyrics height: ${binding.rvLyrics.height}")
             // 歌词高亮与滚动
             if (lrcLines.isNotEmpty()) {
-                val index = lrcLines.indexOfLast { it.time <= safeProgress }
+                val offsetMs = LyricConfig.getOffset(requireContext())
+                val adjustedProgress = safeProgress + offsetMs
+                val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
                 if (index != -1) {
                     lyricAdapter.updateCurrentIndex(index)
                     val offset = binding.rvLyrics.height / 2
@@ -325,6 +362,10 @@ class PlayerFragment : Fragment() {
                         showLyricFontSizeDialog()
                         true
                     }
+                    R.id.action_lyric_offset -> {
+                        showLyricOffsetDialog()
+                        true
+                    }
                     else -> false
                 }
             }
@@ -387,6 +428,52 @@ class PlayerFragment : Fragment() {
             .setNegativeButton("取消") { dialog: DialogInterface, _: Int ->
                 // 恢复原大小
                 lyricAdapter.updateFontSize(currentSize)
+                dialog.dismiss()
+            }
+            .show()
+    }
+
+    private fun showLyricOffsetDialog() {
+        val currentOffset = LyricConfig.getOffset(requireContext())
+        val seekBar = SeekBar(requireContext()).apply {
+            max = 100            // -5000ms 到 +5000ms，步长 100ms
+            progress = (currentOffset + 5000) / 100  // 转换为 0-100 的范围
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    val offsetMs = progress * 100 - 5000
+                    // 实时预览效果（通过重新计算当前行）
+                    val safeProgress = playerViewModel.playerState.value.progress
+                    val adjustedProgress = safeProgress + offsetMs
+                    if (lrcLines.isNotEmpty()) {
+                        val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
+                        if (index != -1) {
+                            lyricAdapter.updateCurrentIndex(index)
+                        }
+                    }
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            })
+        }
+
+        val offsetMs = currentOffset
+        AlertDialog.Builder(requireContext())
+            .setTitle("歌词偏移调整 (${offsetMs}ms)")
+            .setMessage("负值：歌词提前显示\n正值：歌词延后显示")
+            .setView(seekBar)
+            .setPositiveButton("确定") { dialog, _ ->
+                val newOffset = seekBar.progress * 100 - 5000
+                LyricConfig.setOffset(requireContext(), newOffset)
+                dialog.dismiss()
+            }
+            .setNegativeButton("取消") { dialog: DialogInterface, _: Int ->
+                // 恢复原偏移
+                lyricAdapter.notifyDataSetChanged()
+                dialog.dismiss()
+            }
+            .setNeutralButton("重置") { dialog, _ ->
+                LyricConfig.setOffset(requireContext(), 0)
+                lyricAdapter.notifyDataSetChanged()
                 dialog.dismiss()
             }
             .show()
