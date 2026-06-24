@@ -12,7 +12,7 @@ import com.hpu.musicplayer.data.dao.SongDao
 
 @Database(
     entities = [Song::class, PlayHistory::class, PlaybackStateEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -64,7 +64,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2)
+        /**
+         * Migration 2 → 3：songs 表添加 path 唯一索引，防止重复歌曲
+         */
+        private val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 1. 删除 path 重复的记录（保留 id 最小的那条）
+                db.execSQL("DELETE FROM songs WHERE id NOT IN (SELECT MIN(id) FROM songs GROUP BY path)")
+                // 2. 创建唯一索引
+                db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_songs_path ON songs (path)")
+            }
+        }
+
+        private val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {

@@ -6,5 +6,5 @@
     android:gravity="center"
     android:padding="4dp"
     android:textSize="14sp"
-    android:textColor="@android:color/white"
+    android:textColor="@color/white"
     android:lineSpacingMultiplier="1.1" />

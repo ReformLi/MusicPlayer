@@ -42,7 +42,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 app:cardBackgroundColor="?attr/colorSurface"
-                app:cardCornerRadius="16dp"
+                app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="0dp">
 
@@ -104,7 +104,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 app:cardBackgroundColor="?attr/colorSurface"
-                app:cardCornerRadius="16dp"
+                app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="0dp">
 
@@ -172,7 +172,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 app:cardBackgroundColor="?attr/colorSurface"
-                app:cardCornerRadius="16dp"
+                app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="0dp">
 
@@ -241,7 +241,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 app:cardBackgroundColor="?attr/colorSurface"
-                app:cardCornerRadius="16dp"
+                app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="0dp">
 
@@ -298,7 +298,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginBottom="16dp"
                 app:cardBackgroundColor="?attr/colorSurface"
-                app:cardCornerRadius="16dp"
+                app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="0dp">
 
@@ -356,7 +356,7 @@
                 android:layout_marginBottom="12dp"
                 android:layout_marginTop="8dp"
                 android:text="危险操作"
-                android:textColor="@color/accent_red"
+                android:textColor="?attr/colorError"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 android:letterSpacing="0.5" />
@@ -366,7 +366,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 app:cardBackgroundColor="?attr/colorSurface"
-                app:cardCornerRadius="16dp"
+                app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="0dp">
 
@@ -392,7 +392,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="@string/reset_library"
-                            android:textColor="@color/accent_red"
+                            android:textColor="?attr/colorError"
                             android:textSize="16sp"
                             android:textStyle="bold" />
 
@@ -411,7 +411,7 @@
                         android:layout_height="24dp"
                         android:layout_marginStart="16dp"
                         android:src="@drawable/ic_chevron_right"
-                        app:tint="@color/accent_red" />
+                        app:tint="?attr/colorError" />
 
                 </LinearLayout>
 
@@ -424,7 +424,7 @@
                 android:layout_marginBottom="12dp"
                 android:layout_marginTop="24dp"
                 android:text="退出应用"
-                android:textColor="@color/accent_red"
+                android:textColor="?attr/colorError"
                 android:textSize="14sp"
                 android:textStyle="bold"
                 android:letterSpacing="0.5" />
@@ -434,7 +434,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 app:cardBackgroundColor="?attr/colorSurface"
-                app:cardCornerRadius="16dp"
+                app:cardCornerRadius="12dp"
                 app:cardElevation="2dp"
                 app:strokeWidth="0dp">
 
@@ -459,7 +459,7 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:text="退出应用"
-                            android:textColor="@color/accent_red"
+                            android:textColor="?attr/colorError"
                             android:textSize="16sp"
                             android:textStyle="bold" />
 
@@ -478,7 +478,7 @@
                         android:layout_height="24dp"
                         android:layout_marginStart="16dp"
                         android:src="@drawable/ic_chevron_right"
-                        app:tint="@color/accent_red" />
+                        app:tint="?attr/colorError" />
 
                 </LinearLayout>
 

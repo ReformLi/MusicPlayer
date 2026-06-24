@@ -102,7 +102,7 @@
             android:layout_marginEnd="28dp"
             android:src="@drawable/ic_play"
             android:background="@drawable/play_button_background"
-            app:tint="#FF000000"
+            app:tint="?attr/colorOnPrimary"
             android:contentDescription="播放/暂停" />
 
         <ImageButton

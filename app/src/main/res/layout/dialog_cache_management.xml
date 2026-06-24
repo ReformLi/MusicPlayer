@@ -48,8 +48,8 @@
             android:id="@+id/dialogContent"
             android:layout_width="0dp"
             android:layout_height="0dp"
-            app:cardCornerRadius="20dp"
-            app:cardElevation="12dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="6dp"
             app:strokeWidth="0dp"
             app:cardBackgroundColor="?attr/colorSurface"
             app:layout_constraintStart_toStartOf="@id/guidelineStart"
@@ -133,7 +133,7 @@
                     <!-- 清除缓存按钮 -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnClearCache"
-                        style="@style/Widget.Material3.Button.ElevatedButton"
+                        style="@style/Widget.Material3.Button"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginBottom="12dp"
@@ -152,15 +152,12 @@
                     <!-- 关闭按钮 -->
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/tvClose"
-                        style="@style/Widget.Material3.Button.ElevatedButton"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="match_parent"
                         android:layout_height="48dp"
                         android:layout_marginTop="5dp"
                         android:text="关闭"
-                        android:textColor="@android:color/black"
-                        android:textSize="16sp"
-                        app:cornerRadius="16dp"
-                        app:backgroundTint="@color/secondary_container" />
+                        app:cornerRadius="16dp" />
                 </LinearLayout>
 
             </LinearLayout>

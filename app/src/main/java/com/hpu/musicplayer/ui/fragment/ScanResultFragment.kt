@@ -110,7 +110,10 @@ class ScanResultFragment : Fragment() {
             }
             lifecycleScope.launch {
                 val db = AppDatabase.Companion.getDatabase(requireContext())
-                val existingPaths = db.songDao().getAllSongsOnce().map { it.path }.toSet()
+                // 标准化已入库路径（旧数据可能是 content URI），与新扫描的路径对齐
+                val existingPaths = db.songDao().getAllSongsOnce().map {
+                    ScanManager.normalizePath(requireContext(), it.path)
+                }.toSet()
                 val newSongs = selectedSongs.filter { it.path !in existingPaths }
                 if (newSongs.isNotEmpty()) {
                     db.songDao().insertAll(newSongs)

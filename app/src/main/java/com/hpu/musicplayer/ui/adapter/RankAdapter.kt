@@ -1,7 +1,6 @@
 package com.hpu.musicplayer.ui.adapter
 
 import android.content.res.ColorStateList
-import android.graphics.Color
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
@@ -40,26 +39,41 @@ class RankAdapter(
 
         holder.binding.tvRankNumber.text = rank.toString()
 
-        // 前三名特殊颜色
+        // 前三名特殊颜色：colorPrimary 背景 + colorOnPrimary 文字
         when (rank) {
             1 -> {
-                holder.binding.tvRankNumber.setTextColor(Color.parseColor("#FFD700"))
+                holder.binding.tvRankNumber.backgroundTintList = ColorStateList.valueOf(
+                    MaterialColors.getColor(holder.binding.tvRankNumber, com.google.android.material.R.attr.colorPrimary)
+                )
+                holder.binding.tvRankNumber.setTextColor(
+                    MaterialColors.getColor(holder.binding.tvRankNumber, com.google.android.material.R.attr.colorOnPrimary)
+                )
                 holder.binding.tvRankNumber.textSize = 18f
             }
             2 -> {
-                holder.binding.tvRankNumber.setTextColor(Color.parseColor("#C0C0C0"))
+                holder.binding.tvRankNumber.backgroundTintList = ColorStateList.valueOf(
+                    MaterialColors.getColor(holder.binding.tvRankNumber, com.google.android.material.R.attr.colorPrimary)
+                )
+                holder.binding.tvRankNumber.setTextColor(
+                    MaterialColors.getColor(holder.binding.tvRankNumber, com.google.android.material.R.attr.colorOnPrimary)
+                )
                 holder.binding.tvRankNumber.textSize = 16f
             }
             3 -> {
-                holder.binding.tvRankNumber.setTextColor(Color.parseColor("#CD7F32"))
+                holder.binding.tvRankNumber.backgroundTintList = ColorStateList.valueOf(
+                    MaterialColors.getColor(holder.binding.tvRankNumber, com.google.android.material.R.attr.colorPrimary)
+                )
+                holder.binding.tvRankNumber.setTextColor(
+                    MaterialColors.getColor(holder.binding.tvRankNumber, com.google.android.material.R.attr.colorOnPrimary)
+                )
                 holder.binding.tvRankNumber.textSize = 16f
             }
             else -> {
-                val color = MaterialColors.getColor(
-                    holder.binding.tvRankNumber,
-                    com.google.android.material.R.attr.colorOnSurfaceVariant
+                // 恢复默认背景（圆形的 rank_circle_bg drawable）
+                holder.binding.tvRankNumber.backgroundTintList = null
+                holder.binding.tvRankNumber.setTextColor(
+                    MaterialColors.getColor(holder.binding.tvRankNumber, com.google.android.material.R.attr.colorOnPrimaryContainer)
                 )
-                holder.binding.tvRankNumber.setTextColor(color)
                 holder.binding.tvRankNumber.textSize = 14f
             }
         }

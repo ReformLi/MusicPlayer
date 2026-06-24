@@ -90,4 +90,15 @@
     
     <!-- Current song highlight background -->
     <color name="current_song_bg">#1AFF9800</color>
+
+    <!-- Theme-adaptive border color (light: 25% black, dark: 25% white) -->
+    <color name="dropdown_border">#40000000</color>
+
+    <!-- Rank number circle background -->
+    <color name="rank_circle_bg">#EADDFF</color>
+
+    <!-- Rank top 3 accent colors -->
+    <color name="rank_gold">#FFD700</color>
+    <color name="rank_silver">#C0C0C0</color>
+    <color name="rank_bronze">#CD7F32</color>
 </resources>

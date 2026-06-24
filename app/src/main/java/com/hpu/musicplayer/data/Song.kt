@@ -4,10 +4,14 @@ import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Parcelize
-@Entity(tableName = "songs")
+@Entity(
+    tableName = "songs",
+    indices = [Index(value = ["path"], unique = true)]
+)
 data class Song(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,

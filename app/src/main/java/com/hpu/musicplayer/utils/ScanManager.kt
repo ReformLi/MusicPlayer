@@ -154,6 +154,41 @@ object ScanManager {
         }
     }
 
+    /**
+     * 将 SAF content URI 标准化为文件绝对路径，保证与 scanAll 路径格式一致。
+     * 先从 MediaStore.DATA 查询，失败则尝试从 Document ID 拼接，都不行返回原值。
+     */
+    fun normalizePath(context: Context, path: String): String {
+        if (!path.startsWith("content://")) return path
+        return try {
+            val uri = Uri.parse(path)
+            // 方案1：查询 MediaStore.DATA（對已索引文件最可靠）
+            context.contentResolver.query(uri, arrayOf(MediaStore.MediaColumns.DATA), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) {
+                    val idx = cursor.getColumnIndex(MediaStore.MediaColumns.DATA)
+                    if (idx >= 0) {
+                        val filePath = cursor.getString(idx)
+                        if (filePath != null && File(filePath).exists()) return filePath
+                    }
+                }
+            }
+            // 方案2：从 DocumentsContract document ID 拼接（"primary:Music/a.mp3" → "/storage/emulated/0/Music/a.mp3"）
+            try {
+                val docId = DocumentsContract.getDocumentId(uri)
+                val colonIdx = docId.indexOf(':')
+                if (colonIdx > 0) {
+                    val relativePath = docId.substring(colonIdx + 1)
+                    val storagePath = Environment.getExternalStorageDirectory().absolutePath
+                    val candidate = "$storagePath/$relativePath"
+                    if (File(candidate).exists()) return candidate
+                }
+            } catch (_: Exception) { }
+            path // 无法解析，保留原 content URI
+        } catch (e: Exception) {
+            path
+        }
+    }
+
     // 辅助：从文件路径提取歌曲信息
     private fun extractSongFromPath(context: Context, path: String): Song {
         val retriever = MediaMetadataRetriever()
@@ -256,10 +291,13 @@ object ScanManager {
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: "未知专辑"
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0
 
+            // 标准化路径：尝试将 SAF content URI 解析为文件绝对路径
+            val songPath = normalizePath(context, uri.toString())
+
             result.add(
                 Song(
                     title = title, artist = artist, album = album,
-                    duration = duration, path = uri.toString(),
+                    duration = duration, path = songPath,
                     coverPath = coverPath, lrcPath = lrcPath,
                     fileSize = fileSize,
                     addedDate = System.currentTimeMillis()
