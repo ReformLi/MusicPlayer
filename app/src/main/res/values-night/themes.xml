@@ -29,8 +29,8 @@
         <item name="colorOnErrorContainer">#EF9A9A</item>
 
         <!-- Outline -->
-        <item name="colorOutline">#99928B</item>
-        <item name="colorOutlineVariant">@color/outline_variant_warm_dark</item>
+        <item name="colorOutline">@color/outline_warm</item>
+        <item name="colorOutlineVariant">@color/outline_variant_warm</item>
 
         <!-- Status bar -->
         <item name="android:statusBarColor">@color/dark_background</item>

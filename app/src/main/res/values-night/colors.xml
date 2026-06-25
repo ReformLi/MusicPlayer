@@ -3,6 +3,10 @@
     <!-- Dark theme border: 25% white -->
     <color name="dropdown_border">#40FFFFFF</color>
 
+    <!-- Outline (light warm gray for dark backgrounds) -->
+    <color name="outline_warm">#9E9789</color>
+    <color name="outline_variant_warm">#3A3530</color>
+
     <!-- Rank circle background (dark: deeper warm tone) -->
     <color name="rank_circle_bg">#5C3426</color>
 
@@ -10,7 +14,4 @@
     <color name="rank_gold">#FFD700</color>
     <color name="rank_silver">#C0C0C0</color>
     <color name="rank_bronze">#CD7F32</color>
-
-    <!-- Dark outline -->
-    <color name="outline_variant_warm_dark">#3A3530</color>
 </resources>
