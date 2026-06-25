@@ -239,10 +239,10 @@ class HistoryFragment : Fragment() {
         val dialogBinding = DialogRankingsBinding.inflate(layoutInflater)
         val dialog = Dialog(requireContext())
         dialog.setContentView(dialogBinding.root)
-        dialog.window?.setLayout(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.MATCH_PARENT
-        )
+        dialog.window?.apply {
+            setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
+            setBackgroundDrawableResource(android.R.color.transparent)
+        }
 
         val rankAdapter = RankAdapter(sortByDuration = false)
         dialogBinding.rvRankings.layoutManager = LinearLayoutManager(requireContext())

@@ -17,7 +17,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            app:layout_constraintGuide_percent="0.10" />
+            app:layout_constraintGuide_percent="0.05" />
 
         <!-- 右侧引导线 -->
         <androidx.constraintlayout.widget.Guideline
@@ -25,7 +25,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="vertical"
-            app:layout_constraintGuide_percent="0.90" />
+            app:layout_constraintGuide_percent="0.95" />
 
         <!-- 顶部引导线：距离顶部30dp -->
         <androidx.constraintlayout.widget.Guideline
@@ -33,7 +33,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            app:layout_constraintGuide_percent="0.20" />   <!-- 顶部留空 30% -->
+            app:layout_constraintGuide_percent="0.10" />   <!-- 顶部留空 30% -->
 
         <!-- 底部引导线：距离底部10% -->
         <androidx.constraintlayout.widget.Guideline
