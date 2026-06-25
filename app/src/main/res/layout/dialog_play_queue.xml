@@ -96,13 +96,15 @@
                             android:textColor="?attr/colorOnSurface"
                             android:layout_marginStart="8dp" />
 
-                        <TextView
-                            android:id="@+id/tvSongCount"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="8dp"
-                            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
-                            android:textColor="?attr/colorOnSurfaceVariant" />
+                    <TextView
+                        android:id="@+id/tvSongCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:maxLines="1"
+                        android:ellipsize="end"
+                        android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
                     </LinearLayout>
 
                 <com.google.android.material.button.MaterialButton

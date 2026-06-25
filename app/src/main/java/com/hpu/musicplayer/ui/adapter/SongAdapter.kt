@@ -10,6 +10,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupMenu
+import androidx.appcompat.view.ContextThemeWrapper
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -65,13 +67,19 @@ class SongAdapter(
 
         // 更多按钮点击弹出菜单
         holder.binding.btnMore.setOnClickListener { view ->
-            val popup = PopupMenu(view.context, view)
+            val wrappedCtx = ContextThemeWrapper(view.context, R.style.Theme_HpuMusicPlayer_PopupMenu)
+            val popup = PopupMenu(wrappedCtx, view)
             popup.menuInflater.inflate(R.menu.menu_song_item, popup.menu)
             // 如果不显示删除，则移除该项
             if (!showDeleteMenu) {
                 popup.menu.removeItem(R.id.action_delete)
             }
             popup.setForceShowIcons()   // 反射强制显示图标
+            // 统一设置图标颜色为暖陶土主题色
+            val iconColor = ContextCompat.getColor(view.context, R.color.primary_warm)
+            for (i in 0 until popup.menu.size()) {
+                popup.menu.getItem(i).icon?.mutate()?.setTint(iconColor)
+            }
             popup.setOnMenuItemClickListener { menuItem ->
                 when (menuItem.itemId) {
                     R.id.action_add_to_queue -> {

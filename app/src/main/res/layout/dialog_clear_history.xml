@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="@drawable/bg_dialog"
+    android:clipToOutline="true">
+
+    <!-- 标题栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingTop="24dp"
+        android:paddingBottom="16dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_delete"
+            app:tint="?attr/colorError"
+            android:contentDescription="删除" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:text="清空历史"
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.TitleLarge"
+            android:textColor="?attr/colorOnSurface" />
+    </LinearLayout>
+
+    <!-- 分隔线 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="?attr/colorOutlineVariant" />
+
+    <!-- 内容区 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="16dp"
+        android:paddingBottom="8dp">
+
+        <!-- 全部清除的提示文字 -->
+        <TextView
+            android:id="@+id/tvClearMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="24dp"
+            android:paddingBottom="8dp"
+            android:text="确定要删除所有播放历史吗？\n注意：排行榜统计数据也会一并删除。"
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:lineSpacingExtra="4dp"
+            android:visibility="gone" />
+
+        <!-- 范围选择（分级模式下显示） -->
+        <RadioGroup
+            android:id="@+id/rgClearRange"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:visibility="gone"
+            android:paddingHorizontal="16dp">
+
+            <com.google.android.material.radiobutton.MaterialRadioButton
+                android:id="@+id/rbClearCurrent"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:checked="true"
+                android:text="仅清空当前范围"
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge"
+                android:textColor="?attr/colorOnSurface" />
+
+            <com.google.android.material.radiobutton.MaterialRadioButton
+                android:id="@+id/rbClearAll"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:text="清空全部历史"
+                android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge"
+                android:textColor="?attr/colorOnSurface" />
+
+        </RadioGroup>
+
+    </LinearLayout>
+
+    <!-- 分隔线 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="?attr/colorOutlineVariant" />
+
+    <!-- 底部按钮 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="end"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="8dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCancel"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:text="取消"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            app:cornerRadius="24dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnConfirm"
+            style="@style/Widget.Material3.Button.TextButton"
+            android:layout_width="wrap_content"
+            android:layout_height="48dp"
+            android:layout_marginStart="4dp"
+            android:text="确定"
+            android:textColor="?attr/colorError"
+            app:cornerRadius="24dp" />
+
+    </LinearLayout>
+
+</LinearLayout>

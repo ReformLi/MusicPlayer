@@ -391,18 +391,19 @@ class MusicService : MediaSessionService() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        super.onStartCommand(intent, flags, startId)
-        // 如果当前没有歌曲（即服务尚未开始播放任何内容），则显示一个默认的前台通知
-        if (currentSong == null) {
-            val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-                .setSmallIcon(R.drawable.ic_music_note)
-                .setContentTitle("音乐播放器")
-                .setContentText("准备就绪")
-                .setPriority(NotificationCompat.PRIORITY_LOW)
-                .build()
-            startForeground(NOTIFICATION_ID, notification)
-        }
-        return START_STICKY
+        // Android 8.0+ 要求 startForegroundService() 后 5 秒内必须调用 startForeground()，
+        // 否则触发 ANR。必须在 super.onStartCommand() 之前调用，因为 MediaSessionService
+        // 需要等待 MediaController 连接后才通过 notification provider 触发 startForeground()，
+        // 这个过程可能超过 5 秒。
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_music_note)
+            .setContentTitle("音乐播放器")
+            .setContentText("准备就绪")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .build()
+        startForeground(NOTIFICATION_ID, notification)
+
+        return super.onStartCommand(intent, flags, startId)
     }
 
     // ------------------- 进度更新 -------------------

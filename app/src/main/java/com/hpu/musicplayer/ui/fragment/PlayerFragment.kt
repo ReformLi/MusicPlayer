@@ -1,7 +1,5 @@
 package com.hpu.musicplayer.ui.fragment
 
-import android.app.AlertDialog
-import android.content.DialogInterface
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -10,9 +8,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.PopupMenu
-import android.widget.SeekBar
 import androidx.activity.OnBackPressedCallback
+import androidx.appcompat.view.ContextThemeWrapper
 import androidx.core.content.ContextCompat
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.hpu.musicplayer.databinding.DialogLyricFontSizeBinding
+import com.hpu.musicplayer.databinding.DialogLyricOffsetBinding
+import com.hpu.musicplayer.databinding.DialogSleepTimerBinding
 import com.google.android.material.slider.Slider
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
@@ -121,13 +123,16 @@ class PlayerFragment : Fragment() {
 
         setupControls()
 
-        // 点击歌词区域进入全屏歌词
-        // 用 onClickListener + clickable=true（布局已设置），并在点击时 Toast 反馈
-        binding.lyricContainer.setOnClickListener {
-            android.widget.Toast.makeText(requireContext(), "进入全屏歌词", android.widget.Toast.LENGTH_SHORT).show()
-            Log.d("PlayerFragment", "lyricContainer clicked")
-            findNavController().navigate(R.id.action_playerFragment_to_fullscreenLyricsFragment)
+        // 点击歌词区域进入全屏歌词（仅当有歌词时才响应）
+        val goFullscreen: (View) -> Unit = {
+            if (lrcLines.isNotEmpty()) {
+                android.widget.Toast.makeText(requireContext(), "进入全屏歌词", android.widget.Toast.LENGTH_SHORT).show()
+                Log.d("PlayerFragment", "lyricContainer clicked")
+                findNavController().navigate(R.id.action_playerFragment_to_fullscreenLyricsFragment)
+            }
         }
+        binding.lyricContainer.setOnClickListener(goFullscreen)
+        binding.tvNoLyrics.setOnClickListener(goFullscreen)
 
         // 观察剩余时间并显示（例如在 tvSongTitle 下方加一个 TextView）
         viewLifecycleOwner.lifecycleScope.launch {
@@ -344,9 +349,15 @@ class PlayerFragment : Fragment() {
         }
 
         binding.btnMenu.setOnClickListener { view ->
-            val popup = PopupMenu(requireContext(), view)
+            val wrappedCtx = ContextThemeWrapper(requireContext(), R.style.Theme_HpuMusicPlayer_PopupMenu)
+            val popup = PopupMenu(wrappedCtx, view)
             popup.menuInflater.inflate(R.menu.menu_player_more, popup.menu)
             popup.setForceShowIcons()
+            // 将所有菜单项 icon 颜色统一改为主题色
+            val iconColor = ContextCompat.getColor(requireContext(), R.color.primary_warm)
+            for (i in 0 until popup.menu.size()) {
+                popup.menu.getItem(i).icon?.mutate()?.setTint(iconColor)
+            }
             popup.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     R.id.action_play_queue -> {
@@ -403,94 +414,103 @@ class PlayerFragment : Fragment() {
 
     private fun showLyricFontSizeDialog() {
         val currentSize = LyricConfig.getFontSize(requireContext())
-        val seekBar = SeekBar(requireContext()).apply {
-            max = 24              // 最大 24sp
-            progress = currentSize.toInt()
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    // 实时更新歌词大小
-                    lyricAdapter.updateFontSize(progress.toFloat())
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-            })
+        val dialogView = DialogLyricFontSizeBinding.inflate(layoutInflater)
+
+        // 初始化预览和滑块
+        dialogView.tvFontSizeValue.text = "${currentSize.toInt()} sp"
+        dialogView.tvLyricPreview.textSize = currentSize
+        dialogView.sliderFontSize.value = currentSize.coerceIn(10f, 34f)
+
+        dialogView.sliderFontSize.addOnChangeListener { _, value, _ ->
+            dialogView.tvFontSizeValue.text = "${value.toInt()} sp"
+            dialogView.tvLyricPreview.textSize = value
+            lyricAdapter.updateFontSize(value)
         }
 
-        AlertDialog.Builder(requireContext())
-            .setTitle("歌词字体大小 (${currentSize.toInt()}sp)")
-            .setView(seekBar)
-            .setPositiveButton("确定") { dialog, _ ->
-                val newSize = seekBar.progress.toFloat()
-                LyricConfig.setFontSize(requireContext(), newSize)
-                lyricAdapter.updateFontSize(newSize)
-                dialog.dismiss()
-            }
-            .setNegativeButton("取消") { dialog: DialogInterface, _: Int ->
-                // 恢复原大小
-                lyricAdapter.updateFontSize(currentSize)
-                dialog.dismiss()
-            }
-            .show()
+        val dialog = MaterialAlertDialogBuilder(requireContext())
+            .setView(dialogView.root)
+            .create()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        dialogView.btnFontCancel.setOnClickListener {
+            lyricAdapter.updateFontSize(currentSize)
+            dialog.dismiss()
+        }
+        dialogView.btnFontConfirm.setOnClickListener {
+            val newSize = dialogView.sliderFontSize.value
+            LyricConfig.setFontSize(requireContext(), newSize)
+            lyricAdapter.updateFontSize(newSize)
+            dialog.dismiss()
+        }
+        dialog.show()
     }
 
     private fun showLyricOffsetDialog() {
         val currentOffset = LyricConfig.getOffset(requireContext())
-        val seekBar = SeekBar(requireContext()).apply {
-            max = 100            // -5000ms 到 +5000ms，步长 100ms
-            progress = (currentOffset + 5000) / 100  // 转换为 0-100 的范围
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                    val offsetMs = progress * 100 - 5000
-                    // 实时预览效果（通过重新计算当前行）
-                    val safeProgress = playerViewModel.playerState.value.progress
-                    val adjustedProgress = safeProgress + offsetMs
-                    if (lrcLines.isNotEmpty()) {
-                        val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
-                        if (index != -1) {
-                            lyricAdapter.updateCurrentIndex(index)
-                        }
-                    }
-                }
-                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-            })
+        val dialogView = DialogLyricOffsetBinding.inflate(layoutInflater)
+
+        dialogView.tvOffsetValue.text = "${currentOffset} ms"
+        dialogView.sliderOffset.value = currentOffset.toFloat().coerceIn(-5000f, 5000f)
+
+        dialogView.sliderOffset.addOnChangeListener { _, value, _ ->
+            dialogView.tvOffsetValue.text = "${value.toInt()} ms"
+            // 实时预览
+            val safeProgress = playerViewModel.playerState.value.progress
+            val adjustedProgress = safeProgress + value.toLong()
+            if (lrcLines.isNotEmpty()) {
+                val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
+                if (index != -1) lyricAdapter.updateCurrentIndex(index)
+            }
         }
 
-        val offsetMs = currentOffset
-        AlertDialog.Builder(requireContext())
-            .setTitle("歌词偏移调整 (${offsetMs}ms)")
-            .setMessage("负值：歌词提前显示\n正值：歌词延后显示")
-            .setView(seekBar)
-            .setPositiveButton("确定") { dialog, _ ->
-                val newOffset = seekBar.progress * 100 - 5000
-                LyricConfig.setOffset(requireContext(), newOffset)
-                dialog.dismiss()
-            }
-            .setNegativeButton("取消") { dialog: DialogInterface, _: Int ->
-                // 恢复原偏移
-                lyricAdapter.notifyDataSetChanged()
-                dialog.dismiss()
-            }
-            .setNeutralButton("重置") { dialog, _ ->
-                LyricConfig.setOffset(requireContext(), 0)
-                lyricAdapter.notifyDataSetChanged()
-                dialog.dismiss()
-            }
-            .show()
+        val dialog = MaterialAlertDialogBuilder(requireContext())
+            .setView(dialogView.root)
+            .create()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        dialogView.btnOffsetReset.setOnClickListener {
+            dialogView.sliderOffset.value = 0f
+            dialogView.tvOffsetValue.text = "0 ms"
+        }
+        dialogView.btnOffsetCancel.setOnClickListener {
+            lyricAdapter.notifyDataSetChanged()
+            dialog.dismiss()
+        }
+        dialogView.btnOffsetConfirm.setOnClickListener {
+            val newOffset = dialogView.sliderOffset.value.toInt()
+            LyricConfig.setOffset(requireContext(), newOffset)
+            dialog.dismiss()
+        }
+        dialog.show()
     }
 
     private fun showTimerDialog() {
-        val minutes = arrayOf("15", "30", "45", "60", "90", "120")
-        AlertDialog.Builder(requireContext())
-            .setTitle("定时停止播放（分钟）")
-            .setItems(minutes) { _, which ->
-                val min = minutes[which].toInt()
+        val dialogView = DialogSleepTimerBinding.inflate(layoutInflater)
+
+        val dialog = MaterialAlertDialogBuilder(requireContext())
+            .setView(dialogView.root)
+            .create()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+
+        val optionMap = mapOf(
+            dialogView.option15 to 15,
+            dialogView.option30 to 30,
+            dialogView.option45 to 45,
+            dialogView.option60 to 60,
+            dialogView.option90 to 90,
+            dialogView.option120 to 120
+        )
+        optionMap.forEach { (view, min) ->
+            view.setOnClickListener {
                 playerViewModel.startTimer(min)
+                dialog.dismiss()
             }
-            .setNegativeButton("取消定时") { _, _ ->
-                playerViewModel.cancelTimer()
-            }
-            .show()
+        }
+        dialogView.btnCancelTimer.setOnClickListener {
+            playerViewModel.cancelTimer()
+            dialog.dismiss()
+        }
+        dialog.show()
     }
 
     private fun formatTime(millis: Long): String {

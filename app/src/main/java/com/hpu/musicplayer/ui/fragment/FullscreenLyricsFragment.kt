@@ -11,6 +11,8 @@ import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.view.animation.DecelerateInterpolator
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -40,6 +42,9 @@ class FullscreenLyricsFragment : Fragment() {
     private var lrcLines: List<LrcLine> = emptyList()
     private var lastSongId = -1L
 
+    /** 保存进入全屏歌词前的 Toolbar 原始背景，退出时恢复 */
+    private var originalToolbarBackground: android.graphics.drawable.Drawable? = null
+
     // 自定义滚动进度条
     private var isUserScrolling = false
     private var fadeAnimator: ValueAnimator? = null
@@ -56,6 +61,17 @@ class FullscreenLyricsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         hideSystemUI()
+        setupWindowInsets()
+
+        // 清除 ActionBar 标题文字，返回键右边不显示任何文字
+        (requireActivity() as? androidx.appcompat.app.AppCompatActivity)?.supportActionBar?.title = ""
+
+        // 将 Toolbar 背景色统一为歌词页面背景色，消除页面顶部的色差
+        val toolbar = requireActivity().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        originalToolbarBackground = toolbar?.background
+        val typedValue = android.util.TypedValue()
+        requireContext().theme.resolveAttribute(android.R.attr.colorBackground, typedValue, true)
+        toolbar?.setBackgroundColor(typedValue.data)
 
         lyricAdapter.fontSizeSp = LyricConfig.getFontSize(requireContext())
         binding.rvFullscreenLyrics.adapter = lyricAdapter
@@ -69,6 +85,33 @@ class FullscreenLyricsFragment : Fragment() {
                 updateUI(data)
             }
         }
+    }
+
+    /** 动态适配状态栏和导航栏高度，为刘海/挖孔屏腾出安全区域 */
+    private fun setupWindowInsets() {
+        ViewCompat.setOnApplyWindowInsetsListener(binding.fullscreenLyricsContainer) { view, insets ->
+            val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
+            val navBarHeight = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
+
+            // 顶部：状态栏高度作为 paddingTop，叠加 8dp 紧凑基础内边距
+            val basePaddingPx = (8 * resources.displayMetrics.density).toInt()
+            view.setPadding(
+                view.paddingLeft,
+                statusBarHeight + basePaddingPx,
+                view.paddingRight,
+                navBarHeight
+            )
+            insets
+        }
+    }
+
+    /** 保持屏幕常亮，防止全屏歌词页面自动熄屏 */
+    private fun keepScreenOn() {
+        requireActivity().window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
+
+    private fun clearScreenOn() {
+        requireActivity().window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
     /** 设置自定义滚动进度条：仅在手动滑动时显示 */
@@ -161,10 +204,11 @@ class FullscreenLyricsFragment : Fragment() {
     }
 
     private fun hideSystemUI() {
+        // 仅隐藏底部导航栏，保留顶部状态栏以适配刘海/挖孔屏
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             requireActivity().window.setDecorFitsSystemWindows(false)
             requireActivity().window.insetsController?.let { controller ->
-                controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
+                controller.hide(WindowInsets.Type.navigationBars())
                 controller.systemBarsBehavior =
                     WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
@@ -174,9 +218,7 @@ class FullscreenLyricsFragment : Fragment() {
                 View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
                     or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
                     or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
                     or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                    or View.SYSTEM_UI_FLAG_FULLSCREEN
             )
         }
     }
@@ -185,7 +227,7 @@ class FullscreenLyricsFragment : Fragment() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             requireActivity().window.setDecorFitsSystemWindows(true)
             requireActivity().window.insetsController?.show(
-                WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()
+                WindowInsets.Type.navigationBars()
             )
         } else {
             @Suppress("DEPRECATION")
@@ -223,6 +265,13 @@ class FullscreenLyricsFragment : Fragment() {
                 if (data.state == PlaybackState.PLAYING) R.drawable.ic_pause
                 else R.drawable.ic_play
             )
+
+            // 播放时保持屏幕常亮，暂停/停止时恢复自动熄屏
+            if (data.state == PlaybackState.PLAYING) {
+                keepScreenOn()
+            } else {
+                clearScreenOn()
+            }
         }
     }
 
@@ -254,7 +303,13 @@ class FullscreenLyricsFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        clearScreenOn()
         showSystemUI()
+
+        // 恢复 Toolbar 原始背景色
+        val toolbar = requireActivity().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
+        toolbar?.background = originalToolbarBackground
+
         _binding = null
     }
 }

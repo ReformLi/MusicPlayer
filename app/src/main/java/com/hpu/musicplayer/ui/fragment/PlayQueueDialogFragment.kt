@@ -79,7 +79,7 @@ class PlayQueueDialogFragment : DialogFragment() {
                 }
                 val modeName = when (mode) {
                     PlayMode.LIST_LOOP -> "列表循环"
-                    PlayMode.RANDOM -> "随机播放"
+                    PlayMode.RANDOM -> ""          // 随机播放只显示图标，不显示文字
                     PlayMode.SINGLE_LOOP -> "单曲循环"
                 }
                 binding.ivPlayMode.setImageResource(iconRes)

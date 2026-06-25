@@ -29,8 +29,7 @@
 
     <fragment
         android:id="@+id/fullscreenLyricsFragment"
-        android:name="com.hpu.musicplayer.ui.fragment.FullscreenLyricsFragment"
-        android:label="全屏歌词" />
+        android:name="com.hpu.musicplayer.ui.fragment.FullscreenLyricsFragment" />
 
 <!--    <fragment-->
 <!--        android:id="@+id/playQueueFragment"-->

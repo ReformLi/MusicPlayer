@@ -1,92 +1,101 @@
-<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+<com.google.android.material.card.MaterialCardView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="72dp"
+    android:layout_height="68dp"
     android:layout_margin="8dp"
-    app:cardCornerRadius="16dp"
-    app:cardElevation="8dp"
+    app:cardCornerRadius="20dp"
+    app:cardElevation="4dp"
+    app:strokeWidth="0.5dp"
+    app:strokeColor="?attr/colorOutlineVariant"
     app:cardBackgroundColor="?attr/colorSurface">
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:background="?attr/selectableItemBackground">
+        android:orientation="vertical">
 
-        <!-- Album cover with rounded corners -->
-        <com.google.android.material.imageview.ShapeableImageView
-            android:id="@+id/miniCover"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:scaleType="centerCrop"
-            android:src="@drawable/ic_music_note"
-            app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Medium"
-            app:strokeWidth="1dp"
-            app:strokeColor="?attr/colorSurfaceVariant" />
-
-        <!-- Song info section -->
-        <LinearLayout
+        <View
+            android:id="@+id/miniProgressBar"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
+            android:layout_height="2dp"
+            android:background="?attr/colorPrimary" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
             android:layout_weight="1"
-            android:layout_marginStart="16dp"
-            android:layout_marginEnd="16dp"
-            android:orientation="vertical">
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:background="?attr/selectableItemBackground">
 
-            <TextView
-                android:id="@+id/miniTitle"
-                android:layout_width="match_parent"
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/miniCover"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_music_note"
+                app:shapeAppearanceOverlay="@style/ShapeAppearance.HpuMusicPlayer.Small"
+                app:strokeWidth="1dp"
+                app:strokeColor="?attr/colorSurfaceVariant" />
+
+            <LinearLayout
+                android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:textColor="?attr/colorOnSurface"
-                android:textSize="16sp"
-                android:textStyle="bold"
-                android:singleLine="true"
-                android:ellipsize="end" />
+                android:layout_weight="1"
+                android:layout_marginStart="16dp"
+                android:layout_marginEnd="16dp"
+                android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/miniArtist"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:textColor="?attr/colorOnSurfaceVariant"
-                android:textSize="14sp"
-                android:singleLine="true"
-                android:ellipsize="end" />
+                <TextView
+                    android:id="@+id/miniTitle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorOnSurface"
+                    android:textAppearance="@style/TextAppearance.HpuMusicPlayer.TitleMedium"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
 
+                <TextView
+                    android:id="@+id/miniArtist"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:textSize="14sp"
+                    android:singleLine="true"
+                    android:ellipsize="end" />
+            </LinearLayout>
+
+            <ImageButton
+                android:id="@+id/miniPrevious"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginEnd="8dp"
+                android:src="@drawable/ic_skip_previous"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:tint="?attr/colorOnSurface"
+                android:contentDescription="上一首" />
+
+            <ImageButton
+                android:id="@+id/miniPlayPause"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_play"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:tint="?attr/colorOnSurface"
+                android:contentDescription="播放/暂停" />
+
+            <ImageButton
+                android:id="@+id/miniNext"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_skip_next"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                app:tint="?attr/colorOnSurface"
+                android:contentDescription="下一首" />
         </LinearLayout>
-
-        <!-- Control buttons -->
-        <ImageButton
-            android:id="@+id/miniPrevious"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginEnd="8dp"
-            android:src="@drawable/ic_skip_previous"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            app:tint="?attr/colorOnSurface"
-            android:contentDescription="上一首" />
-
-        <ImageButton
-            android:id="@+id/miniPlayPause"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_play"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            app:tint="?attr/colorOnSurface"
-            android:contentDescription="播放/暂停" />
-
-        <ImageButton
-            android:id="@+id/miniNext"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
-            android:layout_marginStart="8dp"
-            android:src="@drawable/ic_skip_next"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            app:tint="?attr/colorOnSurface"
-            android:contentDescription="下一首" />
-
     </LinearLayout>
 
-</androidx.cardview.widget.CardView>
+</com.google.android.material.card.MaterialCardView>

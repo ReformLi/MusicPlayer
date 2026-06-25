@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Light theme gradient: 暖米白 → 白色 → 暖米白 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
     <gradient
         android:type="linear"
         android:angle="270"
-        android:startColor="@color/background_dark"
-        android:centerColor="@color/background_card"
-        android:endColor="@color/background_dark" />
+        android:startColor="@color/background_warm_light"
+        android:centerColor="@color/surface_card"
+        android:endColor="@color/background_warm_light" />
 </shape>

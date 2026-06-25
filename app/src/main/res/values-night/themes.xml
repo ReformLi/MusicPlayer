@@ -1,51 +1,50 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.HpuMusicPlayer" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Primary colors -->
-        <item name="colorPrimary">@color/primary_purple</item>
-        <item name="colorOnPrimary">@color/white</item>
-        <item name="colorPrimaryContainer">@color/primary_container</item>
-        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
+        <!-- Primary: 浅陶土（深色模式提亮） -->
+        <item name="colorPrimary">#E89073</item>
+        <item name="colorOnPrimary">#3D1506</item>
+        <item name="colorPrimaryContainer">#5C3426</item>
+        <item name="colorOnPrimaryContainer">#FFE0D0</item>
 
-        <!-- Secondary colors -->
-        <item name="colorSecondary">@color/accent_teal</item>
-        <item name="colorOnSecondary">@color/white</item>
-        <item name="colorSecondaryContainer">@color/secondary_container</item>
-        <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
+        <!-- Secondary: 浅鼠尾草绿 -->
+        <item name="colorSecondary">#90AE9C</item>
+        <item name="colorOnSecondary">#0F2419</item>
+        <item name="colorSecondaryContainer">#2A3D32</item>
+        <item name="colorOnSecondaryContainer">#DCEFE4</item>
 
-        <!-- Background colors -->
+        <!-- Background: 暖棕黑 -->
         <item name="android:colorBackground">@color/dark_background</item>
         <item name="colorOnBackground">@color/dark_text_primary</item>
 
-        <!-- Surface colors -->
+        <!-- Surface -->
         <item name="colorSurface">@color/dark_surface</item>
         <item name="colorOnSurface">@color/dark_on_surface</item>
-        <item name="colorSurfaceVariant">@color/nav_drawer_dark</item>
+        <item name="colorSurfaceVariant">@color/dark_surface_variant</item>
         <item name="colorOnSurfaceVariant">@color/dark_text_secondary</item>
 
-        <!-- Error colors -->
-        <item name="colorError">@color/error_red</item>
-        <item name="colorOnError">@color/white</item>
-        <item name="colorErrorContainer">@color/accent_red</item>
-        <item name="colorOnErrorContainer">@color/white</item>
+        <!-- Error -->
+        <item name="colorError">#EF9A9A</item>
+        <item name="colorOnError">#4A1010</item>
+        <item name="colorErrorContainer">#611A1A</item>
+        <item name="colorOnErrorContainer">#EF9A9A</item>
 
-        <!-- Outline colors -->
-        <item name="colorOutline">@color/text_tertiary</item>
-        <item name="colorOutlineVariant">@color/text_hint</item>
+        <!-- Outline -->
+        <item name="colorOutline">#99928B</item>
+        <item name="colorOutlineVariant">@color/outline_variant_warm_dark</item>
 
         <!-- Status bar -->
         <item name="android:statusBarColor">@color/dark_background</item>
         <item name="android:navigationBarColor">@color/dark_background</item>
         <item name="android:windowLightStatusBar">false</item>
 
-
-        <!-- Component specific -->
-        <item name="colorAccent">@color/accent_blue</item>
+        <!-- Component accent -->
+        <item name="colorAccent">#90AE9C</item>
 
         <!-- Text appearances -->
         <item name="android:textColorPrimary">@color/dark_text_primary</item>
         <item name="android:textColorSecondary">@color/dark_text_secondary</item>
 
-        <!-- Shape appearances -->
+        <!-- Shape appearances (unchanged) -->
         <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.HpuMusicPlayer.Small</item>
         <item name="shapeAppearanceMediumComponent">@style/ShapeAppearance.HpuMusicPlayer.Medium</item>
         <item name="shapeAppearanceLargeComponent">@style/ShapeAppearance.HpuMusicPlayer.Large</item>

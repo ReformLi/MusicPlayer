@@ -1,6 +1,7 @@
 package com.hpu.musicplayer.ui.fragment
 
 import android.app.Dialog
+import android.content.Context
 import android.os.Bundle
 import android.text.Editable
 import android.text.TextWatcher
@@ -8,9 +9,11 @@ import android.view.*
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.RadioGroup
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.view.ContextThemeWrapper
 import androidx.appcompat.widget.PopupMenu
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -129,7 +132,8 @@ class HistoryFragment : Fragment() {
 
     private fun showTimeRangePopup(anchor: View) {
         val timeRanges = TimeRange.values()
-        val popup = PopupMenu(requireContext(), anchor)
+        val wrappedCtx = ContextThemeWrapper(requireContext(), R.style.Theme_HpuMusicPlayer_PopupMenu)
+        val popup = PopupMenu(wrappedCtx, anchor)
         timeRanges.forEachIndexed { index, range ->
             popup.menu.add(0, index, index, range.label)
         }
@@ -143,7 +147,8 @@ class HistoryFragment : Fragment() {
     }
 
     private fun showOptionsPopup(anchor: View) {
-        val popup = PopupMenu(requireContext(), anchor)
+        val wrappedCtx = ContextThemeWrapper(requireContext(), R.style.Theme_HpuMusicPlayer_PopupMenu)
+        val popup = PopupMenu(wrappedCtx, anchor)
         popup.menu.add(0, R.id.id_action_rankings, 0, "排行榜")
         popup.menu.add(0, R.id.id_action_clear_all, 1, "清空历史")
 
@@ -186,38 +191,47 @@ class HistoryFragment : Fragment() {
 
     private fun showClearAllDialog() {
         val currentRange = currentTimeRange
-        // 当时间范围为"全部"时，不需要选范围，直接确认即可
+        val dialogLayout = layoutInflater.inflate(R.layout.dialog_clear_history, null, false) as LinearLayout
+        val tvMessage = dialogLayout.findViewById<TextView>(R.id.tvClearMessage)
+        val rgRange = dialogLayout.findViewById<RadioGroup>(R.id.rgClearRange)
+        val rbClearCurrent = dialogLayout.findViewById<com.google.android.material.radiobutton.MaterialRadioButton>(R.id.rbClearCurrent)
+
+        // 根据时间范围决定显示内容
         if (currentRange == TimeRange.ALL) {
-            AlertDialog.Builder(requireContext())
-                .setTitle("清空全部历史")
-                .setMessage("确定要删除所有播放历史吗？\n注意：排行榜统计数据也会一并删除。")
-                .setPositiveButton("确定") { _, _ ->
-                    lifecycleScope.launch { repository.deleteAllPlayHistory() }
-                }
-                .setNegativeButton("取消", null)
-                .show()
-            return
+            // 全部模式：只显示提示文字
+            tvMessage.visibility = View.VISIBLE
+            rgRange.visibility = View.GONE
+        } else {
+            // 分级模式：显示范围选择
+            tvMessage.visibility = View.GONE
+            rgRange.visibility = View.VISIBLE
+            rbClearCurrent.text = "仅清空${currentRange.label}"
         }
 
-        // 有分级时，提供范围选择
-        val options = arrayOf("仅清空${currentRange.label}", "清空全部历史")
-        val checkedItem = 0 // 默认选中第一项
+        val dialog = MaterialAlertDialogBuilder(requireContext())
+            .setView(dialogLayout)
+            .create()
 
-        AlertDialog.Builder(requireContext())
-            .setTitle("清空历史")
-            .setSingleChoiceItems(options, checkedItem) { _, _ -> }
-            .setPositiveButton("确定") { dialog, _ ->
-                val selected = (dialog as AlertDialog).listView.checkedItemPosition
-                lifecycleScope.launch {
-                    if (selected == 0) {
-                        repository.deletePlayHistorySince(getSinceTimestamp())
-                    } else {
+        dialogLayout.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCancel).setOnClickListener {
+            dialog.dismiss()
+        }
+        dialogLayout.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnConfirm).setOnClickListener {
+            lifecycleScope.launch {
+                if (currentRange == TimeRange.ALL) {
+                    repository.deleteAllPlayHistory()
+                } else {
+                    val selectedId = rgRange.checkedRadioButtonId
+                    if (selectedId == R.id.rbClearAll) {
                         repository.deleteAllPlayHistory()
+                    } else {
+                        repository.deletePlayHistorySince(getSinceTimestamp())
                     }
                 }
             }
-            .setNegativeButton("取消", null)
-            .show()
+            dialog.dismiss()
+        }
+
+        dialog.show()
     }
 
     // ========== 排行榜弹窗 ==========
@@ -242,7 +256,8 @@ class HistoryFragment : Fragment() {
 
         dialogBinding.sortDropdownLayout.setOnClickListener { anchor ->
             val sortOptions = arrayOf("按播放次数", "按播放时长")
-            val popup = PopupMenu(requireContext(), anchor)
+            val wrappedCtx = ContextThemeWrapper(requireContext(), R.style.Theme_HpuMusicPlayer_PopupMenu)
+            val popup = PopupMenu(wrappedCtx, anchor)
             sortOptions.forEachIndexed { index, label ->
                 popup.menu.add(0, index, index, label)
             }

@@ -1,9 +1,11 @@
 package com.hpu.musicplayer.ui.adapter
 
-import android.graphics.Color
+import android.content.Context
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.RecyclerView
+import com.hpu.musicplayer.R
 import com.hpu.musicplayer.databinding.ItemLyricLineBinding
 import com.hpu.musicplayer.utils.LrcLine
 
@@ -48,14 +50,15 @@ class LyricAdapter : RecyclerView.Adapter<LyricAdapter.ViewHolder>() {
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
         val line = lyrics[position]
         val isCurrent = position == currentIndex
+        val ctx = holder.itemView.context
         holder.binding.tvLyricLine.text = line.text
         // 当前行稍大，非当前行小一些
         val size = if (isCurrent) fontSizeSp * 1.2f else fontSizeSp
         holder.binding.tvLyricLine.textSize = size
         if (isCurrent) {
-            holder.binding.tvLyricLine.setTextColor(Color.GREEN)
+            holder.binding.tvLyricLine.setTextColor(ContextCompat.getColor(ctx, R.color.accent_orange))
         } else {
-            holder.binding.tvLyricLine.setTextColor(Color.GRAY)
+            holder.binding.tvLyricLine.setTextColor(ContextCompat.getColor(ctx, R.color.text_secondary))
         }
     }
 

@@ -180,6 +180,17 @@ class MainActivity : AppCompatActivity() {
                         if (data.state == PlaybackState.PLAYING) R.drawable.ic_pause
                         else R.drawable.ic_play
                     )
+
+                    // 更新迷你播放器顶部进度线
+                    val progressView = binding.miniPlayer.miniProgressBar
+                    val params = progressView.layoutParams
+                    if (data.duration > 0) {
+                        val ratio = data.progress.toFloat() / data.duration.toFloat()
+                        params.width = (binding.miniPlayer.root.width * ratio).toInt()
+                    } else {
+                        params.width = 0
+                    }
+                    progressView.layoutParams = params
                 } else {
                     binding.miniPlayer.root.visibility = View.GONE
                 }

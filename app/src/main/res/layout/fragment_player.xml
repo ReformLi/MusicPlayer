@@ -4,7 +4,7 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#FF000000">
+    android:background="?android:colorBackground">
 
     <!-- 背景渐变 -->
     <View
@@ -19,8 +19,8 @@
         android:layout_width="0dp"
         android:layout_height="0dp"
         android:layout_marginTop="12dp"
-        app:cardCornerRadius="16dp"
-        app:cardElevation="8dp"
+        app:cardCornerRadius="20dp"
+        app:cardElevation="4dp"
         app:cardBackgroundColor="?attr/colorSurface"
         app:layout_constraintHeight_percent="0.40"
         app:layout_constraintDimensionRatio="1:1"
@@ -124,6 +124,8 @@
             android:id="@+id/tvNoLyrics"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:clickable="false"
+            android:focusable="false"
             android:gravity="center"
             android:text="暂无歌词"
             android:textColor="?attr/colorOnSurfaceVariant"

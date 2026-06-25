@@ -1,13 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Dark theme border: 25% white (subtle in dark mode) -->
+    <!-- Dark theme border: 25% white -->
     <color name="dropdown_border">#40FFFFFF</color>
 
-    <!-- Rank number circle background (dark mode: deeper purple) -->
-    <color name="rank_circle_bg">#4F378B</color>
+    <!-- Rank circle background (dark: deeper warm tone) -->
+    <color name="rank_circle_bg">#5C3426</color>
 
-    <!-- Rank top 3 accent colors (same in light/dark) -->
+    <!-- Rank top 3 (same in light/dark) -->
     <color name="rank_gold">#FFD700</color>
     <color name="rank_silver">#C0C0C0</color>
     <color name="rank_bronze">#CD7F32</color>
+
+    <!-- Dark outline -->
+    <color name="outline_variant_warm_dark">#3A3530</color>
 </resources>

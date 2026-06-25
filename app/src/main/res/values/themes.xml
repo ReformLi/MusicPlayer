@@ -1,50 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.HpuMusicPlayer" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Primary colors -->
-        <item name="colorPrimary">@color/primary_purple</item>
+        <!-- Primary: 暖陶土 -->
+        <item name="colorPrimary">@color/primary_warm</item>
         <item name="colorOnPrimary">@color/white</item>
-        <item name="colorPrimaryContainer">@color/primary_container</item>
-        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
+        <item name="colorPrimaryContainer">@color/primary_container_warm</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container_warm</item>
 
-        <!-- Secondary colors -->
-        <item name="colorSecondary">@color/accent_teal</item>
+        <!-- Secondary: 鼠尾草绿 -->
+        <item name="colorSecondary">@color/secondary_sage</item>
         <item name="colorOnSecondary">@color/white</item>
-        <item name="colorSecondaryContainer">@color/secondary_container</item>
-        <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
+        <item name="colorSecondaryContainer">@color/secondary_container_sage</item>
+        <item name="colorOnSecondaryContainer">@color/on_secondary_container_sage</item>
 
-        <!-- Background colors -->
-        <item name="android:colorBackground">@color/background_light</item>
-        <item name="colorOnBackground">@color/text_primary</item>
+        <!-- Background: 暖米白 -->
+        <item name="android:colorBackground">@color/background_warm_light</item>
+        <item name="colorOnBackground">@color/text_primary_warm</item>
 
-        <!-- Surface colors -->
-        <item name="colorSurface">@color/surface_primary</item>
-        <item name="colorOnSurface">@color/on_surface</item>
-        <item name="colorSurfaceVariant">@color/nav_drawer_light</item>
-        <item name="colorOnSurfaceVariant">@color/text_secondary</item>
+        <!-- Surface: 纯白卡片 -->
+        <item name="colorSurface">@color/surface_card</item>
+        <item name="colorOnSurface">@color/text_primary_warm</item>
+        <item name="colorSurfaceVariant">@color/surface_variant_warm</item>
+        <item name="colorOnSurfaceVariant">@color/text_secondary_warm</item>
 
-        <!-- Error colors -->
-        <item name="colorError">@color/error_red</item>
+        <!-- Error -->
+        <item name="colorError">@color/error_warm</item>
         <item name="colorOnError">@color/white</item>
         <item name="colorErrorContainer">@color/accent_red</item>
         <item name="colorOnErrorContainer">@color/white</item>
 
-        <!-- Outline colors -->
-        <item name="colorOutline">@color/text_tertiary</item>
-        <item name="colorOutlineVariant">@color/text_hint</item>
+        <!-- Outline -->
+        <item name="colorOutline">@color/outline_warm</item>
+        <item name="colorOutlineVariant">@color/outline_variant_warm</item>
 
         <!-- Status bar -->
-        <item name="android:statusBarColor">@color/background_light</item>
-        <item name="android:navigationBarColor">@color/background_light</item>
+        <item name="android:statusBarColor">@color/background_warm_light</item>
+        <item name="android:navigationBarColor">@color/background_warm_light</item>
         <item name="android:windowLightStatusBar">true</item>
 
-
-        <!-- Component specific -->
-        <item name="colorAccent">@color/accent_blue</item>
+        <!-- Component accent -->
+        <item name="colorAccent">@color/secondary_sage</item>
 
         <!-- Text appearances -->
-        <item name="android:textColorPrimary">@color/text_primary</item>
-        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorPrimary">@color/text_primary_warm</item>
+        <item name="android:textColorSecondary">@color/text_secondary_warm</item>
 
         <!-- Shape appearances -->
         <item name="shapeAppearanceSmallComponent">@style/ShapeAppearance.HpuMusicPlayer.Small</item>
@@ -76,7 +75,7 @@
         <item name="android:windowSharedElementExitTransition">@android:transition/move</item>
     </style>
 
-    <!-- Shape appearances -->
+    <!-- Shape appearances (unchanged) -->
     <style name="ShapeAppearance.HpuMusicPlayer.Small" parent="ShapeAppearance.Material3.SmallComponent">
         <item name="cornerFamily">rounded</item>
         <item name="cornerSize">8dp</item>
@@ -92,25 +91,11 @@
         <item name="cornerSize">16dp</item>
     </style>
 
-    <!-- Typography scale -->
+    <!-- Typography (Title weights: 400 → 500, HeadlineMedium: 400 → 500) -->
     <style name="TextAppearance.HpuMusicPlayer.DisplayLarge" parent="TextAppearance.Material3.DisplayLarge">
         <item name="android:textSize">57sp</item>
         <item name="android:textFontWeight" tools:targetApi="p">400</item>
     </style>
-
-    <!-- Popup menu theme -->
-    <style name="Theme.HpuMusicPlayer.PopupMenu" parent="ThemeOverlay.AppCompat.Dialog">
-        <item name="android:colorBackground">?attr/colorSurface</item>
-        <item name="android:textColorPrimary">?attr/colorOnSurface</item>
-        <item name="android:textColorSecondary">?attr/colorOnSurfaceVariant</item>
-    </style>
-
-    <!-- Dialog Animation Style -->
-    <style name="DialogAnimation">
-        <item name="android:windowEnterAnimation">@anim/scale_in</item>
-        <item name="android:windowExitAnimation">@anim/fade_out</item>
-    </style>
-
 
     <style name="TextAppearance.HpuMusicPlayer.DisplayMedium" parent="TextAppearance.Material3.DisplayMedium">
         <item name="android:textSize">45sp</item>
@@ -129,7 +114,7 @@
 
     <style name="TextAppearance.HpuMusicPlayer.HeadlineMedium" parent="TextAppearance.Material3.HeadlineMedium">
         <item name="android:textSize">28sp</item>
-        <item name="android:textFontWeight" tools:targetApi="p">400</item>
+        <item name="android:textFontWeight" tools:targetApi="p">500</item>
     </style>
 
     <style name="TextAppearance.HpuMusicPlayer.HeadlineSmall" parent="TextAppearance.Material3.HeadlineSmall">
@@ -139,17 +124,17 @@
 
     <style name="TextAppearance.HpuMusicPlayer.TitleLarge" parent="TextAppearance.Material3.TitleLarge">
         <item name="android:textSize">22sp</item>
-        <item name="android:textFontWeight" tools:targetApi="p">400</item>
+        <item name="android:textFontWeight" tools:targetApi="p">500</item>
     </style>
 
     <style name="TextAppearance.HpuMusicPlayer.TitleMedium" parent="TextAppearance.Material3.TitleMedium">
         <item name="android:textSize">16sp</item>
-        <item name="android:textFontWeight" tools:targetApi="p">400</item>
+        <item name="android:textFontWeight" tools:targetApi="p">500</item>
     </style>
 
     <style name="TextAppearance.HpuMusicPlayer.TitleSmall" parent="TextAppearance.Material3.TitleSmall">
         <item name="android:textSize">14sp</item>
-        <item name="android:textFontWeight" tools:targetApi="p">400</item>
+        <item name="android:textFontWeight" tools:targetApi="p">500</item>
     </style>
 
     <style name="TextAppearance.HpuMusicPlayer.BodyLarge" parent="TextAppearance.Material3.BodyLarge">
@@ -180,5 +165,18 @@
     <style name="TextAppearance.HpuMusicPlayer.LabelSmall" parent="TextAppearance.Material3.LabelSmall">
         <item name="android:textSize">11sp</item>
         <item name="android:textFontWeight" tools:targetApi="p">500</item>
+    </style>
+
+    <!-- Popup menu theme -->
+    <style name="Theme.HpuMusicPlayer.PopupMenu" parent="ThemeOverlay.AppCompat.Dark">
+        <item name="android:colorBackground">@color/surface_card</item>
+        <item name="android:textColorPrimary">@color/text_primary_warm</item>
+        <item name="android:textColorSecondary">@color/text_secondary_warm</item>
+    </style>
+
+    <!-- Dialog Animation -->
+    <style name="DialogAnimation">
+        <item name="android:windowEnterAnimation">@anim/scale_in</item>
+        <item name="android:windowExitAnimation">@anim/scale_and_fade_out</item>
     </style>
 </resources>

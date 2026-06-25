@@ -3,7 +3,7 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24"
-    android:tint="#FFFFFF">
+    android:tint="?attr/colorOnSurface">
     <!-- 歌词偏移图标：时钟 + 加减号 -->
     <path
         android:fillColor="@android:color/white"

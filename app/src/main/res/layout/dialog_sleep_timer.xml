@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingHorizontal="0dp"
+    android:paddingBottom="8dp"
+    android:background="@drawable/bg_dialog"
+    android:clipToOutline="true">
+
+    <!-- 标题栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="24dp"
+        android:paddingTop="24dp"
+        android:paddingBottom="16dp">
+
+        <ImageView
+            android:layout_width="24dp"
+            android:layout_height="24dp"
+            android:src="@drawable/ic_timer"
+            app:tint="?attr/colorPrimary"
+            android:contentDescription="定时" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:text="定时停止播放"
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.TitleLarge"
+            android:textColor="?attr/colorOnSurface" />
+    </LinearLayout>
+
+    <!-- 分隔线 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="?attr/colorOutlineVariant" />
+
+    <!-- 选项列表 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+
+        <TextView
+            android:id="@+id/option15"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="24dp"
+            android:text="15 分钟"
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
+            android:background="?attr/selectableItemBackground" />
+
+        <TextView
+            android:id="@+id/option30"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="24dp"
+            android:text="30 分钟"
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
+            android:background="?attr/selectableItemBackground" />
+
+        <TextView
+            android:id="@+id/option45"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="24dp"
+            android:text="45 分钟"
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
+            android:background="?attr/selectableItemBackground" />
+
+        <TextView
+            android:id="@+id/option60"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="24dp"
+            android:text="60 分钟"
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
+            android:background="?attr/selectableItemBackground" />
+
+        <TextView
+            android:id="@+id/option90"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="24dp"
+            android:text="90 分钟"
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
+            android:background="?attr/selectableItemBackground" />
+
+        <TextView
+            android:id="@+id/option120"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:gravity="center_vertical"
+            android:paddingHorizontal="24dp"
+            android:text="120 分钟"
+            android:textAppearance="@style/TextAppearance.HpuMusicPlayer.BodyLarge"
+            android:textColor="?attr/colorOnSurface"
+            android:background="?attr/selectableItemBackground" />
+
+    </LinearLayout>
+
+    <!-- 分隔线 -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="?attr/colorOutlineVariant" />
+
+    <!-- 取消定时按钮 -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnCancelTimer"
+        style="@style/Widget.Material3.Button.TextButton"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:text="取消定时"
+        android:textColor="?attr/colorError"
+        app:cornerRadius="24dp"
+        app:iconGravity="textStart" />
+
+</LinearLayout>
