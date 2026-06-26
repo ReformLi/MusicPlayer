@@ -264,7 +264,9 @@ class FullscreenLyricsFragment : Fragment() {
                 val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
                 if (index != -1) {
                     lyricAdapter.updateCurrentIndex(index)
-                    val offset = binding.rvFullscreenLyrics.height / 2 - binding.rvFullscreenLyrics.paddingTop
+                    val density = resources.displayMetrics.density
+                    val highlightShift = (lyricAdapter.fontSizeSp * density * 0.2f).toInt()
+                    val offset = binding.rvFullscreenLyrics.height / 2 - binding.rvFullscreenLyrics.paddingTop - highlightShift
                     (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
                         .scrollToPositionWithOffset(index, offset)
                 }
@@ -300,11 +302,11 @@ class FullscreenLyricsFragment : Fragment() {
                     val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
                     if (index != -1) {
                         lyricAdapter.updateCurrentIndex(index)
-                        binding.rvFullscreenLyrics.post {
-                            val offset = binding.rvFullscreenLyrics.height / 2 - binding.rvFullscreenLyrics.paddingTop
-                            (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
-                                .scrollToPositionWithOffset(index, offset)
-                        }
+                        val density = resources.displayMetrics.density
+                        val highlightShift = (lyricAdapter.fontSizeSp * density * 0.2f).toInt()
+                        val offset = binding.rvFullscreenLyrics.height / 2 - binding.rvFullscreenLyrics.paddingTop - highlightShift
+                        (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
+                            .scrollToPositionWithOffset(index, offset)
                     }
                 }
             }

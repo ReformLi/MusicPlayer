@@ -225,7 +225,11 @@ class PlayerFragment : Fragment() {
                 val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
                 if (index != -1) {
                     lyricAdapter.updateCurrentIndex(index)
-                    val offset = binding.rvLyrics.height / 2 - binding.rvLyrics.paddingTop
+                    // 同步滚动，保持丝滑；高亮行字体放大1.2倍，额外高度约
+                    // 0.2*fontSizeSp*density，中心需上移一半即 0.1*fontSizeSp*density
+                    val density = resources.displayMetrics.density
+                    val highlightShift = (lyricAdapter.fontSizeSp * density * 0.2f).toInt()
+                    val offset = binding.rvLyrics.height / 2 - binding.rvLyrics.paddingTop - highlightShift
                     (binding.rvLyrics.layoutManager as LinearLayoutManager)
                         .scrollToPositionWithOffset(index, offset)
                 }
@@ -302,11 +306,11 @@ class PlayerFragment : Fragment() {
                     val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
                     if (index != -1) {
                         lyricAdapter.updateCurrentIndex(index)
-                        binding.rvLyrics.post {
-                            val offset = binding.rvLyrics.height / 2 - binding.rvLyrics.paddingTop
-                            (binding.rvLyrics.layoutManager as LinearLayoutManager)
-                                .scrollToPositionWithOffset(index, offset)
-                        }
+                        val density = resources.displayMetrics.density
+                        val highlightShift = (lyricAdapter.fontSizeSp * density * 0.2f).toInt()
+                        val offset = binding.rvLyrics.height / 2 - binding.rvLyrics.paddingTop - highlightShift
+                        (binding.rvLyrics.layoutManager as LinearLayoutManager)
+                            .scrollToPositionWithOffset(index, offset)
                     }
                 }
             }
