@@ -55,6 +55,10 @@ interface PlayHistoryDao {
 
     @Query("DELETE FROM play_history")
     suspend fun deleteAll()
+
+    /** 删除所有 endTime 为 NULL 的孤儿记录（App 启动时清理非正常退出遗留的脏数据） */
+    @Query("DELETE FROM play_history WHERE endTime IS NULL")
+    suspend fun deleteOrphans()
 }
 
 /** 排行榜条目（聚合查询结果） */

@@ -76,6 +76,15 @@ class FullscreenLyricsFragment : Fragment() {
         lyricAdapter.fontSizeSp = LyricConfig.getFontSize(requireContext())
         binding.rvFullscreenLyrics.adapter = lyricAdapter
         binding.rvFullscreenLyrics.layoutManager = LinearLayoutManager(requireContext())
+        // 歌词列表上下留白（各半屏高），配合 clipToPadding=false，
+        // 使首行和末行歌词也能滚动到歌词区域中间位置
+        binding.rvFullscreenLyrics.clipToPadding = false
+        binding.rvFullscreenLyrics.post {
+            if (binding.rvFullscreenLyrics.height > 0) {
+                val halfHeight = binding.rvFullscreenLyrics.height / 2
+                binding.rvFullscreenLyrics.setPadding(0, halfHeight, 0, halfHeight)
+            }
+        }
 
         setupScrollIndicator()
         setupControls()
@@ -255,7 +264,7 @@ class FullscreenLyricsFragment : Fragment() {
                 val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
                 if (index != -1) {
                     lyricAdapter.updateCurrentIndex(index)
-                    val offset = binding.rvFullscreenLyrics.height / 2
+                    val offset = binding.rvFullscreenLyrics.height / 2 - binding.rvFullscreenLyrics.paddingTop
                     (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
                         .scrollToPositionWithOffset(index, offset)
                 }
@@ -283,6 +292,21 @@ class FullscreenLyricsFragment : Fragment() {
             withContext(Dispatchers.Main) {
                 lrcLines = lines
                 lyricAdapter.submitList(lrcLines)
+                // 歌词异步加载完成后，补滚到当前播放进度位置
+                if (lrcLines.isNotEmpty()) {
+                    val currentProgress = playerViewModel.playerState.value.progress
+                    val offsetMs = LyricConfig.getOffset(requireContext())
+                    val adjustedProgress = currentProgress + offsetMs
+                    val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
+                    if (index != -1) {
+                        lyricAdapter.updateCurrentIndex(index)
+                        binding.rvFullscreenLyrics.post {
+                            val offset = binding.rvFullscreenLyrics.height / 2 - binding.rvFullscreenLyrics.paddingTop
+                            (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
+                                .scrollToPositionWithOffset(index, offset)
+                        }
+                    }
+                }
             }
         }
     }

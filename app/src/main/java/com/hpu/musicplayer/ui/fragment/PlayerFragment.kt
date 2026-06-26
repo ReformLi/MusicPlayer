@@ -74,6 +74,15 @@ class PlayerFragment : Fragment() {
         lyricAdapter.fontSizeSp = LyricConfig.getFontSize(requireContext())
         binding.rvLyrics.adapter = lyricAdapter
         binding.rvLyrics.layoutManager = LinearLayoutManager(requireContext())
+        // 歌词列表上下留白（各半屏高），配合 clipToPadding=false，
+        // 使首行和末行歌词也能滚动到歌词区域中间位置
+        binding.rvLyrics.clipToPadding = false
+        binding.rvLyrics.post {
+            if (binding.rvLyrics.height > 0) {
+                val halfHeight = binding.rvLyrics.height / 2
+                binding.rvLyrics.setPadding(0, halfHeight, 0, halfHeight)
+            }
+        }
         // rvLyrics 会消费触摸事件（用于滚动），导致 lyricContainer 收不到点击
         // 通过触摸监听拦截：手指按下和抬起在同一 item 内且没有滚动时，视为点击
         binding.rvLyrics.addOnItemTouchListener(object : RecyclerView.OnItemTouchListener {
@@ -216,7 +225,7 @@ class PlayerFragment : Fragment() {
                 val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
                 if (index != -1) {
                     lyricAdapter.updateCurrentIndex(index)
-                    val offset = binding.rvLyrics.height / 2
+                    val offset = binding.rvLyrics.height / 2 - binding.rvLyrics.paddingTop
                     (binding.rvLyrics.layoutManager as LinearLayoutManager)
                         .scrollToPositionWithOffset(index, offset)
                 }
@@ -285,6 +294,20 @@ class PlayerFragment : Fragment() {
                     binding.tvNoLyrics.visibility = View.VISIBLE
                 } else {
                     binding.tvNoLyrics.visibility = View.GONE
+                    // 歌词异步加载完成后，补滚到当前播放进度位置
+                    // （updateUI 中的滚动逻辑此时可能因 lrcLines 还为空而跳过）
+                    val currentProgress = playerViewModel.playerState.value.progress
+                    val offsetMs = LyricConfig.getOffset(requireContext())
+                    val adjustedProgress = currentProgress + offsetMs
+                    val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
+                    if (index != -1) {
+                        lyricAdapter.updateCurrentIndex(index)
+                        binding.rvLyrics.post {
+                            val offset = binding.rvLyrics.height / 2 - binding.rvLyrics.paddingTop
+                            (binding.rvLyrics.layoutManager as LinearLayoutManager)
+                                .scrollToPositionWithOffset(index, offset)
+                        }
+                    }
                 }
             }
         }

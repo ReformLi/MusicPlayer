@@ -328,6 +328,15 @@ class MusicService : MediaSessionService() {
     @UnstableApi
     override fun onCreate() {
         super.onCreate()
+        // 启动时清理上次非正常退出遗留的孤儿记录（endTime = NULL）
+        serviceScope.launch {
+            try {
+                repository.deleteOrphanHistory()
+                Log.i(TAG, "Cleaned orphan play history records")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to clean orphan history: ${e.message}", e)
+            }
+        }
         createNotificationChannel()
         initAudioFocus()
         initWakeLock()

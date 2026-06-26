@@ -12,7 +12,7 @@ object LyricConfig {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
     fun getFontSize(context: Context): Float =
-        getPrefs(context).getFloat(KEY_FONT_SIZE, 16f)   // 默认 16sp
+        getPrefs(context).getFloat(KEY_FONT_SIZE, 15f)   // 默认 15sp
 
     fun setFontSize(context: Context, size: Float) {
         getPrefs(context).edit().putFloat(KEY_FONT_SIZE, size).apply()

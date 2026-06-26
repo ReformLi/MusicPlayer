@@ -107,6 +107,11 @@ class MusicRepository private constructor(context: Context) {
         playHistoryDao.deleteSince(since)
     }
 
+    /** 清理孤儿记录（endTime 为 NULL 的脏数据） */
+    suspend fun deleteOrphanHistory() = withContext(Dispatchers.IO) {
+        playHistoryDao.deleteOrphans()
+    }
+
     companion object {
         @Volatile
         private var INSTANCE: MusicRepository? = null

@@ -109,7 +109,7 @@
         android:layout_height="0dp"
         android:clickable="true"
         android:focusable="true"
-        app:layout_constraintHeight_percent="0.20"
+        app:layout_constraintHeight_percent="0.25"
         app:layout_constraintTop_toBottomOf="@id/songInfoContainer"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
