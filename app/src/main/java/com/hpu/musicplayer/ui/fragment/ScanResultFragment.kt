@@ -7,10 +7,13 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.databinding.FragmentScanResultBinding
@@ -32,6 +35,7 @@ class ScanResultFragment : Fragment() {
     private val folderMap = mutableMapOf<String, MutableList<Song>>()
     private val selectedFolders = mutableSetOf<String>()
     private lateinit var adapter: FolderAdapter
+    private var optionsMenu: android.view.Menu? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -52,10 +56,43 @@ class ScanResultFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // 添加选项菜单
+        requireActivity().addMenuProvider(object : MenuProvider {
+            override fun onCreateMenu(menu: android.view.Menu, menuInflater: android.view.MenuInflater) {
+                menuInflater.inflate(R.menu.scan_result_menu, menu)
+            }
+
+            override fun onMenuItemSelected(menuItem: android.view.MenuItem): Boolean {
+                return when (menuItem.itemId) {
+                    R.id.action_select_all -> {
+                        if (selectedFolders.size == folderMap.size) {
+                            // 当前已全部选中，执行取消操作
+                            selectedFolders.clear()
+                        } else {
+                            // 当前未全部选中，执行全选操作
+                            selectedFolders.clear()
+                            selectedFolders.addAll(folderMap.keys)
+                        }
+                        adapter.notifyDataSetChanged()
+                        updateSelectAllButton()
+                        true
+                    }
+                    else -> false
+                }
+            }
+
+            override fun onPrepareMenu(menu: android.view.Menu) {
+                super.onPrepareMenu(menu)
+                optionsMenu = menu
+                updateSelectAllButton()
+            }
+        }, viewLifecycleOwner, Lifecycle.State.RESUMED)
+
         adapter = FolderAdapter(folderMap, selectedFolders) { folder ->
             if (selectedFolders.contains(folder)) selectedFolders.remove(folder)
             else selectedFolders.add(folder)
             adapter.notifyDataSetChanged()
+            updateSelectAllButton()
         }
         binding.rvFolders.adapter = adapter
         binding.rvFolders.layoutManager = LinearLayoutManager(requireContext())
@@ -91,6 +128,7 @@ class ScanResultFragment : Fragment() {
 
                 binding.tvScanSummary.text = "共扫描到 ${songs.size} 首歌曲，分布在 ${folderMap.size} 个目录中"
                 adapter.updateData(folderMap)
+                updateSelectAllButton()
             } catch (e: Exception) {
                 Toast.makeText(requireContext(), "扫描失败: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
@@ -135,6 +173,20 @@ class ScanResultFragment : Fragment() {
                 Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
                 parentFragmentManager.popBackStack()
             }
+        }
+    }
+
+    // 更新全选按钮状态
+    private fun updateSelectAllButton() {
+        if (folderMap.isEmpty()) {
+            optionsMenu?.findItem(R.id.action_select_all)?.isEnabled = false
+            return
+        }
+        optionsMenu?.findItem(R.id.action_select_all)?.isEnabled = true
+        if (selectedFolders.size == folderMap.size) {
+            optionsMenu?.findItem(R.id.action_select_all)?.title = "取消"
+        } else {
+            optionsMenu?.findItem(R.id.action_select_all)?.title = "全选"
         }
     }
 
