@@ -30,15 +30,34 @@
             android:paddingEnd="16dp"
             android:background="?attr/selectableItemBackground">
 
-            <com.google.android.material.imageview.ShapeableImageView
-                android:id="@+id/miniCover"
-                android:layout_width="48dp"
+            <!-- 专辑图片 + 光盘容器（重叠效果） -->
+            <FrameLayout
+                android:layout_width="wrap_content"
                 android:layout_height="48dp"
-                android:scaleType="centerCrop"
-                android:src="@drawable/ic_music_note"
-                app:shapeAppearanceOverlay="@style/ShapeAppearance.HpuMusicPlayer.Small"
-                app:strokeWidth="1dp"
-                app:strokeColor="?attr/colorSurfaceVariant" />
+                android:layout_marginEnd="8dp">
+
+                <com.google.android.material.imageview.ShapeableImageView
+                    android:id="@+id/miniCover"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/ic_music_note"
+                    app:shapeAppearanceOverlay="@style/ShapeAppearance.HpuMusicPlayer.Small"
+                    app:strokeWidth="1dp"
+                    app:strokeColor="?attr/colorSurfaceVariant" />
+
+                <!-- 光盘（与专辑图片重叠，只有右侧一部分可见） -->
+                <ImageView
+                    android:id="@+id/ivMiniDisc"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:layout_marginStart="38dp"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/disc_drawable"
+                    android:visibility="gone"
+                    android:alpha="0.0"
+                    android:contentDescription="光盘" />
+            </FrameLayout>
 
             <LinearLayout
                 android:layout_width="0dp"

@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 光盘 drawable：模拟真实 CD 外观 -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- 最底层：光盘底色（银色渐变） -->
+    <item>
+        <shape android:shape="oval">
+            <gradient
+                android:type="sweep"
+                android:centerX="0.5"
+                android:centerY="0.5"
+                android:startColor="#FFB0B0B0"
+                android:centerColor="#FFD0D0D0"
+                android:endColor="#FFA0A0A0" />
+        </shape>
+    </item>
+
+    <!-- 外圈深色边 -->
+    <item
+        android:bottom="2dp"
+        android:left="2dp"
+        android:right="2dp"
+        android:top="2dp">
+        <shape android:shape="oval">
+            <solid android:color="#FF202020" />
+        </shape>
+    </item>
+
+    <!-- 光盘主体（银色，带径向渐变效果用 sweep 模拟） -->
+    <item
+        android:bottom="4dp"
+        android:left="4dp"
+        android:right="4dp"
+        android:top="4dp">
+        <shape android:shape="oval">
+            <gradient
+                android:type="sweep"
+                android:centerX="0.5"
+                android:centerY="0.5"
+                android:startColor="#FFC0C0C0"
+                android:centerColor="#FFE0E0E0"
+                android:endColor="#FFB0B0B0" />
+        </shape>
+    </item>
+
+    <!-- 内圈（音轨区，稍暗） -->
+    <item
+        android:bottom="20dp"
+        android:left="20dp"
+        android:right="20dp"
+        android:top="20dp">
+        <shape android:shape="oval">
+            <solid android:color="#FF909090" />
+        </shape>
+    </item>
+
+    <!-- 中心孔周围的亮环 -->
+    <item
+        android:bottom="30dp"
+        android:left="30dp"
+        android:right="30dp"
+        android:top="30dp">
+        <shape android:shape="oval">
+            <solid android:color="#FFB0B0B0" />
+        </shape>
+    </item>
+
+    <!-- 中心孔（透明） -->
+    <item
+        android:bottom="34dp"
+        android:left="34dp"
+        android:right="34dp"
+        android:top="34dp">
+        <shape android:shape="oval">
+            <solid android:color="#00000000" />
+            <stroke android:width="1dp" android:color="#FF888888" />
+        </shape>
+    </item>
+
+</layer-list>

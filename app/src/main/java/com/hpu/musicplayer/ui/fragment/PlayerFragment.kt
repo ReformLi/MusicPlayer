@@ -1,4 +1,4 @@
-package com.hpu.musicplayer.ui.fragment
+﻿package com.hpu.musicplayer.ui.fragment
 
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
@@ -7,6 +7,7 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.PopupMenu
 import androidx.activity.OnBackPressedCallback
 import androidx.appcompat.view.ContextThemeWrapper
@@ -51,6 +52,7 @@ class PlayerFragment : Fragment() {
     private val lyricAdapter = LyricAdapter()
     private var lrcLines: List<LrcLine> = emptyList()
     private var lastSongId = -1L
+    private var isDiscShowing = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -258,6 +260,13 @@ class PlayerFragment : Fragment() {
                 if (data.state == PlaybackState.PLAYING) R.drawable.ic_pause
                 else R.drawable.ic_play
             )
+
+            // 光盘显示/隐藏（播放时渐入+旋转，暂停时渐出）
+            if (data.state == PlaybackState.PLAYING && !isDiscShowing) {
+                showDisc()
+            } else if (data.state != PlaybackState.PLAYING && isDiscShowing) {
+                hideDisc()
+            }
 
             // 歌词区域可见性
 //            binding.tvNoLyrics.visibility = if (lrcLines.isEmpty()) View.VISIBLE else View.GONE
@@ -546,8 +555,52 @@ class PlayerFragment : Fragment() {
         return String.format("%02d:%02d", minutes, seconds)
     }
 
+    /**
+     * 播放时显示光盘：专辑图片往左平移，光盘从后面露出右侧部分，整体居中，不旋转
+     */
+    private fun showDisc() {
+        if (isDiscShowing) return
+        isDiscShowing = true
+        binding.albumDiscContainer.post {
+            if (_binding == null || !isAdded) return@post
+            val albumSize = binding.cardAlbum.height
+            if (albumSize == 0) return@post
+
+            // 光盘始终紧贴专辑右侧（不旋转），露出约 20%（即 1/5）
+            binding.ivDisc.translationX = albumSize * 0.8f
+            binding.ivDisc.visibility = View.VISIBLE
+            binding.ivDisc.alpha = 0f
+            binding.ivDisc.animate().alpha(0.85f).setDuration(300).start()
+
+            // 专辑图片往左平移，使「专辑+光碟」整体视觉居中
+            // 光盘露出 20%，即整体多出 albumSize*0.2，一半 = albumSize*0.1
+            binding.cardAlbum.animate()
+                .translationX(-albumSize * 0.1f)
+                .setDuration(300)
+                .start()
+        }
+    }
+
+    /**
+     * 暂停时隐藏光盘：专辑图片归位，光碟渐出
+     */
+    private fun hideDisc() {
+        isDiscShowing = false
+        binding.cardAlbum.animate()
+            .translationX(0f)
+            .setDuration(300)
+            .start()
+        binding.ivDisc.animate().alpha(0f).setDuration(300).withEndAction {
+            if (_binding == null || !isAdded) return@withEndAction
+            binding.ivDisc.visibility = View.GONE
+            binding.ivDisc.clearAnimation()
+            binding.ivDisc.translationX = 0f
+        }.start()
+    }
+
     override fun onDestroyView() {
         super.onDestroyView()
         _binding = null
     }
 }
+

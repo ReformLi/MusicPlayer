@@ -181,6 +181,30 @@ class MainActivity : AppCompatActivity() {
                         else R.drawable.ic_play
                     )
 
+                    // 迷你播放器光盘：播放时显示（不旋转），暂停时隐藏
+                    if (data.state == PlaybackState.PLAYING) {
+                        if (binding.miniPlayer.ivMiniDisc.visibility != View.VISIBLE) {
+                            binding.miniPlayer.ivMiniDisc.visibility = View.VISIBLE
+                            binding.miniPlayer.ivMiniDisc.alpha = 0f
+                            binding.miniPlayer.ivMiniDisc.animate().alpha(0.85f).setDuration(300).start()
+                            // 封面往左平移，露出右侧光碟（1/5）
+                            binding.miniPlayer.miniCover.animate()
+                                .translationX(-5f)
+                                .setDuration(300)
+                                .start()
+                        }
+                    } else {
+                        if (binding.miniPlayer.ivMiniDisc.visibility == View.VISIBLE) {
+                            binding.miniPlayer.miniCover.animate()
+                                .translationX(0f)
+                                .setDuration(300)
+                                .start()
+                            binding.miniPlayer.ivMiniDisc.animate().alpha(0f).setDuration(300).withEndAction {
+                                binding.miniPlayer.ivMiniDisc.visibility = View.GONE
+                            }.start()
+                        }
+                    }
+
                     // 更新迷你播放器顶部进度线
                     val progressView = binding.miniPlayer.miniProgressBar
                     val params = progressView.layoutParams
