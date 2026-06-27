@@ -564,10 +564,15 @@ class PlayerFragment : Fragment() {
         binding.albumDiscContainer.post {
             if (_binding == null || !isAdded) return@post
             val albumSize = binding.cardAlbum.height
-            if (albumSize == 0) return@post
+            if (albumSize == 0) {
+                // 布局尚未完成，延迟重试
+                isDiscShowing = false
+                binding.albumDiscContainer.postDelayed({ showDisc() }, 100)
+                return@post
+            }
 
-            // 光盘始终紧贴专辑右侧（不旋转），露出约 20%（即 1/5）
-            binding.ivDisc.translationX = albumSize * 0.8f
+            // 光盘被专辑遮住 4/5，右侧只露出 1/5
+            binding.ivDisc.translationX = albumSize * 0.15f
             binding.ivDisc.visibility = View.VISIBLE
             binding.ivDisc.alpha = 0f
             binding.ivDisc.animate().alpha(0.85f).setDuration(300).start()
@@ -596,6 +601,14 @@ class PlayerFragment : Fragment() {
             binding.ivDisc.clearAnimation()
             binding.ivDisc.translationX = 0f
         }.start()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // 从其他页面返回时，如果正在播放但光碟未显示（如从全屏歌词返回视图重建），主动恢复
+        if (!isDiscShowing && playerViewModel.playerState.value.state == PlaybackState.PLAYING) {
+            showDisc()
+        }
     }
 
     override fun onDestroyView() {
