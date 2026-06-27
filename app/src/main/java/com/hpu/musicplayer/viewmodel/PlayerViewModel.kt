@@ -46,9 +46,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var isConnecting = false
     private val maxPendingActions = 20  // 限制队列最大长度，防止无限增长
 
-    // 冷启动恢复状态标志：恢复期间 SongsFragment 应跳过 setPlaylist
-    var isRestoringState = false
-
     // ---------- 定时器 ----------
     private var timerJob: Job? = null
     private val _timerRemaining = MutableStateFlow(0L)

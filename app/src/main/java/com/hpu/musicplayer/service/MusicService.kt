@@ -95,6 +95,9 @@ class MusicService : MediaSessionService() {
 
         private val _currentIndexFlow = MutableStateFlow(-1)
         val currentIndexFlow: StateFlow<Int> = _currentIndexFlow.asStateFlow()
+
+        // 冷启动恢复标志：恢复期间 onMediaItemTransition 不自动更新 currentSong
+        var isRestoringState = false
     }
 
     private var progressUpdateJob: Job? = null
@@ -272,6 +275,8 @@ class MusicService : MediaSessionService() {
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            // 冷启动恢复期间跳过，避免覆盖 restoreSong 设置的 currentSong
+            if (isRestoringState) return
             val newIndex = player?.currentMediaItemIndex ?: -1
             Log.d(TAG, "onMediaItemTransition: newIndex=$newIndex, reason=$reason, repeatMode=${player?.repeatMode}, shuffle=${player?.shuffleModeEnabled}")
             if (newIndex != -1 && newIndex < playlist.size) {
@@ -290,6 +295,20 @@ class MusicService : MediaSessionService() {
             if (state == Player.STATE_READY && pendingSeekIndex != -1) {
                 player?.seekTo(pendingSeekIndex, pendingSeekPosition)
                 pendingSeekIndex = -1
+            }
+            // 冷启动恢复完成：player 就绪后清除恢复标志，并同步播放列表
+            if (state == Player.STATE_READY && isRestoringState) {
+                isRestoringState = false
+                serviceScope.launch {
+                    try {
+                        val songs = repository.getAllSongsOnce()
+                        if (songs.isNotEmpty() && songs.map { it.id } != playlist.map { it.id }) {
+                            setPlaylist(songs)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "restoreState setPlaylist failed: ${e.message}")
+                    }
+                }
             }
         }
 

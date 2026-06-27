@@ -32,7 +32,6 @@ import com.hpu.musicplayer.utils.Permissions
 import com.hpu.musicplayer.utils.SettingsPreferences
 import com.hpu.musicplayer.utils.ThemeHelper
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -344,8 +343,8 @@ class MainActivity : AppCompatActivity() {
         val current = playerViewModel.playerState.value
         if (current.currentSong?.id == savedState.currentSongId) return
 
-        // 设置恢复标志，防止 SongsFragment.setPlaylist 覆盖状态
-        playerViewModel.isRestoringState = true
+        // 设置恢复标志，防止 onMediaItemTransition 覆盖 restoreSong 的状态
+        MusicService.isRestoringState = true
 
         if (savedState.currentSongId != -1L) {
             val song = db.songDao().getSongById(savedState.currentSongId)
@@ -353,15 +352,7 @@ class MainActivity : AppCompatActivity() {
                 playerViewModel.restoreSong(song, savedState.position)
             }
         }
-
-        // 恢复完成后，等 pendingActions 执行完毕再同步播放列表
-        delay(500)
-        playerViewModel.isRestoringState = false
-        // 手动同步播放列表（此时 Service 已有 currentSong，setPlaylist 会保留它）
-        val songs = db.songDao().getAllSongsOnce()
-        if (songs.isNotEmpty()) {
-            playerViewModel.setPlaylist(songs)
-        }
+        // 标志解除和播放列表同步由 Service.onPlaybackStateChanged(READY) 自动完成
     }
 
     private fun showPermissionDeniedMessage() {
