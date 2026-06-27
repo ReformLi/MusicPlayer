@@ -1,10 +1,12 @@
 package com.hpu.musicplayer
 
+import android.animation.ObjectAnimator
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.View
+import android.view.animation.LinearInterpolator
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
@@ -41,6 +43,7 @@ class MainActivity : AppCompatActivity() {
     private var lastBackPressTime = 0L
 
     private lateinit var playerViewModel: PlayerViewModel
+    private var miniDiscRotator: ObjectAnimator? = null
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -181,7 +184,7 @@ class MainActivity : AppCompatActivity() {
                         else R.drawable.ic_play
                     )
 
-                    // 迷你播放器光盘：播放时显示（不旋转），暂停时隐藏
+                    // 迷你播放器光盘：播放时显示并旋转，暂停时隐藏
                     if (data.state == PlaybackState.PLAYING) {
                         if (binding.miniPlayer.ivMiniDisc.visibility != View.VISIBLE) {
                             binding.miniPlayer.ivMiniDisc.visibility = View.VISIBLE
@@ -192,15 +195,27 @@ class MainActivity : AppCompatActivity() {
                                 .translationX(-5f)
                                 .setDuration(300)
                                 .start()
+                            // 启动旋转
+                            miniDiscRotator = ObjectAnimator.ofFloat(
+                                binding.miniPlayer.ivMiniDisc, "rotation", 0f, 360f
+                            ).apply {
+                                duration = 8000
+                                repeatCount = ObjectAnimator.INFINITE
+                                interpolator = LinearInterpolator()
+                                start()
+                            }
                         }
                     } else {
                         if (binding.miniPlayer.ivMiniDisc.visibility == View.VISIBLE) {
+                            miniDiscRotator?.cancel()
+                            miniDiscRotator = null
                             binding.miniPlayer.miniCover.animate()
                                 .translationX(0f)
                                 .setDuration(300)
                                 .start()
                             binding.miniPlayer.ivMiniDisc.animate().alpha(0f).setDuration(300).withEndAction {
                                 binding.miniPlayer.ivMiniDisc.visibility = View.GONE
+                                binding.miniPlayer.ivMiniDisc.rotation = 0f
                             }.start()
                         }
                     }
