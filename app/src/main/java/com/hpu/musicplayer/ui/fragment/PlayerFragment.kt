@@ -1,5 +1,6 @@
 ﻿package com.hpu.musicplayer.ui.fragment
 
+import android.animation.ObjectAnimator
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
@@ -7,6 +8,7 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.LinearInterpolator
 import android.widget.ImageView
 import android.widget.PopupMenu
 import androidx.activity.OnBackPressedCallback
@@ -53,6 +55,7 @@ class PlayerFragment : Fragment() {
     private var lrcLines: List<LrcLine> = emptyList()
     private var lastSongId = -1L
     private var isDiscShowing = false
+    private var discRotator: ObjectAnimator? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -556,7 +559,7 @@ class PlayerFragment : Fragment() {
     }
 
     /**
-     * 播放时显示光盘：专辑图片往左平移，光盘从后面露出右侧部分，整体居中，不旋转
+     * 播放时显示光盘：专辑图片往左平移，光盘从后面露出右侧部分，整体居中，自身圆心旋转
      */
     private fun showDisc() {
         if (isDiscShowing) return
@@ -577,6 +580,14 @@ class PlayerFragment : Fragment() {
             binding.ivDisc.alpha = 0f
             binding.ivDisc.animate().alpha(0.85f).setDuration(300).start()
 
+            // 启动旋转（ObjectAnimator 绕自身圆心旋转，不受 translationX 影响）
+            discRotator = ObjectAnimator.ofFloat(binding.ivDisc, "rotation", 0f, 360f).apply {
+                duration = 8000
+                repeatCount = ObjectAnimator.INFINITE
+                interpolator = LinearInterpolator()
+                start()
+            }
+
             // 专辑图片往左平移，使「专辑+光碟」整体视觉居中
             // 光盘露出 20%，即整体多出 albumSize*0.2，一半 = albumSize*0.1
             binding.cardAlbum.animate()
@@ -591,6 +602,8 @@ class PlayerFragment : Fragment() {
      */
     private fun hideDisc() {
         isDiscShowing = false
+        discRotator?.cancel()
+        discRotator = null
         binding.cardAlbum.animate()
             .translationX(0f)
             .setDuration(300)
@@ -598,7 +611,7 @@ class PlayerFragment : Fragment() {
         binding.ivDisc.animate().alpha(0f).setDuration(300).withEndAction {
             if (_binding == null || !isAdded) return@withEndAction
             binding.ivDisc.visibility = View.GONE
-            binding.ivDisc.clearAnimation()
+            binding.ivDisc.rotation = 0f
             binding.ivDisc.translationX = 0f
         }.start()
     }
@@ -613,6 +626,8 @@ class PlayerFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        discRotator?.cancel()
+        discRotator = null
         isDiscShowing = false
         _binding = null
     }
