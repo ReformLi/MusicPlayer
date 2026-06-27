@@ -76,13 +76,13 @@ class FullscreenLyricsFragment : Fragment() {
         lyricAdapter.fontSizeSp = LyricConfig.getFontSize(requireContext())
         binding.rvFullscreenLyrics.adapter = lyricAdapter
         binding.rvFullscreenLyrics.layoutManager = LinearLayoutManager(requireContext())
-        // 歌词列表上下留白（各半屏高），配合 clipToPadding=false，
-        // 使首行和末行歌词也能滚动到歌词区域中间位置
+        // 歌词列表底部留白（半屏高），配合 clipToPadding=false，
+        // 使末行歌词也能滚动到歌词区域中间位置；顶部不留白，第一行歌词紧贴顶部
         binding.rvFullscreenLyrics.clipToPadding = false
         binding.rvFullscreenLyrics.post {
             if (binding.rvFullscreenLyrics.height > 0) {
                 val halfHeight = binding.rvFullscreenLyrics.height / 2
-                binding.rvFullscreenLyrics.setPadding(0, halfHeight, 0, halfHeight)
+                binding.rvFullscreenLyrics.setPadding(0, 0, 0, halfHeight)
             }
         }
 
@@ -262,13 +262,18 @@ class FullscreenLyricsFragment : Fragment() {
                 val offsetMs = LyricConfig.getOffset(requireContext())
                 val adjustedProgress = safeProgress + offsetMs
                 val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
-                if (index != -1) {
+                if (index >= 0) {
                     lyricAdapter.updateCurrentIndex(index)
                     val density = resources.displayMetrics.density
                     val highlightShift = (lyricAdapter.fontSizeSp * density * 0.2f).toInt()
                     val offset = binding.rvFullscreenLyrics.height / 2 - binding.rvFullscreenLyrics.paddingTop - highlightShift
                     (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
                         .scrollToPositionWithOffset(index, offset)
+                } else {
+                    // 进度在所有歌词之前（如拖到开头），清除高亮并滚到顶部
+                    lyricAdapter.updateCurrentIndex(-1)
+                    (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
+                        .scrollToPositionWithOffset(0, 0)
                 }
             }
 

@@ -79,13 +79,13 @@ class PlayerFragment : Fragment() {
         lyricAdapter.fontSizeSp = LyricConfig.getFontSize(requireContext())
         binding.rvLyrics.adapter = lyricAdapter
         binding.rvLyrics.layoutManager = LinearLayoutManager(requireContext())
-        // 歌词列表上下留白（各半屏高），配合 clipToPadding=false，
-        // 使首行和末行歌词也能滚动到歌词区域中间位置
+        // 歌词列表底部留白（半屏高），配合 clipToPadding=false，
+        // 使末行歌词也能滚动到歌词区域中间位置；顶部不留白，第一行歌词紧贴顶部
         binding.rvLyrics.clipToPadding = false
         binding.rvLyrics.post {
             if (binding.rvLyrics.height > 0) {
                 val halfHeight = binding.rvLyrics.height / 2
-                binding.rvLyrics.setPadding(0, halfHeight, 0, halfHeight)
+                binding.rvLyrics.setPadding(0, 0, 0, halfHeight)
             }
         }
         // rvLyrics 会消费触摸事件（用于滚动），导致 lyricContainer 收不到点击
@@ -228,7 +228,7 @@ class PlayerFragment : Fragment() {
                 val offsetMs = LyricConfig.getOffset(requireContext())
                 val adjustedProgress = safeProgress + offsetMs
                 val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
-                if (index != -1) {
+                if (index >= 0) {
                     lyricAdapter.updateCurrentIndex(index)
                     // 同步滚动，保持丝滑；高亮行字体放大1.2倍，额外高度约
                     // 0.2*fontSizeSp*density，中心需上移一半即 0.1*fontSizeSp*density
@@ -237,6 +237,11 @@ class PlayerFragment : Fragment() {
                     val offset = binding.rvLyrics.height / 2 - binding.rvLyrics.paddingTop - highlightShift
                     (binding.rvLyrics.layoutManager as LinearLayoutManager)
                         .scrollToPositionWithOffset(index, offset)
+                } else {
+                    // 进度在所有歌词之前（如拖到开头），清除高亮并滚到顶部
+                    lyricAdapter.updateCurrentIndex(-1)
+                    (binding.rvLyrics.layoutManager as LinearLayoutManager)
+                        .scrollToPositionWithOffset(0, 0)
                 }
             }
 
