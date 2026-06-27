@@ -132,6 +132,8 @@ class SongsFragment : Fragment() {
                     Log.d("SongsFragment", "Ignoring playlist update after manual deletion")
                 } else {
                     // 正常更新（增、改等）
+                    // 冷启动恢复期间跳过 setPlaylist，避免覆盖 restoreSong 的状态
+                    if (playerViewModel.isRestoringState) return@collect
                     val currentServicePlaylist = MusicService.playlistFlow.value
                     if (songs != currentServicePlaylist) {
                         playerViewModel.setPlaylist(songs)
