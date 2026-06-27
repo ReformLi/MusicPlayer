@@ -613,6 +613,7 @@ class PlayerFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        isDiscShowing = false
         _binding = null
     }
 }
