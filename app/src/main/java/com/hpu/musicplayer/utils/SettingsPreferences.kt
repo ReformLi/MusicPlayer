@@ -23,7 +23,7 @@ object SettingsPreferences {
 
     // 每次打开 app 主页列表随机排列
     fun isShuffleOnStartEnabled(context: Context): Boolean =
-        getPrefs(context).getBoolean(KEY_SHUFFLE_ON_START, true) // 默认开启
+        getPrefs(context).getBoolean(KEY_SHUFFLE_ON_START, false) // 默认关闭
 
     fun setShuffleOnStartEnabled(context: Context, enabled: Boolean) {
         getPrefs(context).edit().putBoolean(KEY_SHUFFLE_ON_START, enabled).apply()
