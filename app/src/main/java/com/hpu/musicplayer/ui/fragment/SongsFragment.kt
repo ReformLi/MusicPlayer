@@ -29,6 +29,7 @@ import com.hpu.musicplayer.databinding.FragmentSongsBinding
 import com.hpu.musicplayer.service.MusicService
 import com.hpu.musicplayer.ui.adapter.SongAdapter
 import com.hpu.musicplayer.utils.CoverMigration
+import com.hpu.musicplayer.utils.SettingsPreferences
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
@@ -118,13 +119,22 @@ class SongsFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             playerViewModel.allSongs.collect { songs ->
                 allSongs = songs
-                val displayList = if (currentQuery.isEmpty()) songs
-                else songs.filter {
-                    it.title.contains(currentQuery, true) ||
-                            it.artist.contains(currentQuery, true) ||
-                            it.album.contains(currentQuery, true)
+                // 展示列表：无搜索时根据设置决定是否随机排列，有搜索时按过滤结果
+                val displayList = if (currentQuery.isEmpty()) {
+                    playerViewModel.getDisplayList(songs, SettingsPreferences.isShuffleOnStartEnabled(requireContext()))
+                } else {
+                    songs.filter {
+                        it.title.contains(currentQuery, true) ||
+                                it.artist.contains(currentQuery, true) ||
+                                it.album.contains(currentQuery, true)
+                    }
                 }
-                adapter.submitList(displayList)
+                // ID 列表与上次完全相同则跳过 submitList，避免切换页面返回时列表刷新
+                val newIds = displayList.map { it.id }
+                if (newIds != playerViewModel.lastDisplaySongIds) {
+                    adapter.submitList(displayList)
+                    playerViewModel.lastDisplaySongIds = newIds
+                }
 
                 if (ignoreNextPlaylistUpdate) {
                     ignoreNextPlaylistUpdate = false
@@ -134,9 +144,12 @@ class SongsFragment : Fragment() {
                     // 正常更新（增、改等）
                     // 冷启动恢复期间跳过 setPlaylist，避免覆盖 restoreSong 的状态
                     if (MusicService.isRestoringState) return@collect
-                    val currentServicePlaylist = MusicService.playlistFlow.value
-                    if (songs != currentServicePlaylist) {
-                        playerViewModel.setPlaylist(songs)
+                    // 播放列表也按展示顺序（随机或原始）设置
+                    // 用 ID 列表比较，避免引用不同但内容相同时重复设置
+                    val currentServiceIds = MusicService.playlistFlow.value.map { it.id }
+                    val newPlaylistIds = displayList.map { it.id }
+                    if (newPlaylistIds != currentServiceIds) {
+                        playerViewModel.setPlaylist(displayList)
                     }
                 }
                 binding.emptyView.visibility = if (displayList.isEmpty()) View.VISIBLE else View.GONE
@@ -197,8 +210,10 @@ class SongsFragment : Fragment() {
                 // 控制清除按钮的显示/隐藏：焦点由监听管理，此处不再处理
                 // 保持原有逻辑即可，因为焦点监听已经处理了可见性
 
-                val filtered = if (query.isEmpty()) allSongs
-                else allSongs.filter { song ->
+                val filtered = if (query.isEmpty()) {
+                    // 搜索清空时，使用与主页相同的展示逻辑（随机或原始）
+                    playerViewModel.getDisplayList(allSongs, SettingsPreferences.isShuffleOnStartEnabled(requireContext()))
+                } else allSongs.filter { song ->
                     song.title.contains(query, ignoreCase = true) ||
                             song.artist.contains(query, ignoreCase = true) ||
                             song.album.contains(query, ignoreCase = true)

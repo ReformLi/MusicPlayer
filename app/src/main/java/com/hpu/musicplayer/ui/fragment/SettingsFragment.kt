@@ -66,6 +66,7 @@ class SettingsFragment : Fragment() {
         playerViewModel = ViewModelProvider(requireActivity())[PlayerViewModel::class.java]
 
         setupNotificationControl()
+        setupShuffleOnStart()
         setupThemeSwitch()
         setupHelp()
         setupAbout()
@@ -111,6 +112,15 @@ class SettingsFragment : Fragment() {
                 // 用户关闭开关
                 disableNotification()
             }
+        }
+    }
+
+    private fun setupShuffleOnStart() {
+        binding.switchShuffleOnStart.isChecked =
+            SettingsPreferences.isShuffleOnStartEnabled(requireContext())
+
+        binding.switchShuffleOnStart.setOnCheckedChangeListener { _, isChecked ->
+            SettingsPreferences.setShuffleOnStartEnabled(requireContext(), isChecked)
         }
     }
 
