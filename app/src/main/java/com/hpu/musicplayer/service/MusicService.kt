@@ -520,10 +520,6 @@ class MusicService : MediaSessionService() {
         _playlistFlow.value = playlist.toList()
 
         val mediaItems = playlist.map { buildMediaItem(it) }
-        player?.apply {
-            stop()                  // 停止当前播放（避免旧音频残留）
-            clearMediaItems()
-        }
 
         if (previousSong != null) {
             currentIndex = playlist.indexOfFirst { it.id == previousSong.id }
@@ -532,19 +528,28 @@ class MusicService : MediaSessionService() {
                 _currentIndexFlow.value = currentIndex
                 player?.apply {
                     setMediaItems(mediaItems, currentIndex, previousPosition)
-                    prepare()
+                    if (playbackState == Player.STATE_IDLE) {
+                        prepare()
+                    }
                     playWhenReady = shouldResume
                 }
                 updateState()
             } else {
-                // 原歌曲不在新列表中，清除状态
+                player?.apply {
+                    stop()
+                    clearMediaItems()
+                }
                 currentSong = null
                 currentIndex = -1
                 _currentIndexFlow.value = -1
                 updateState()
             }
         } else {
-            player?.addMediaItems(mediaItems)
+            player?.apply {
+                stop()
+                clearMediaItems()
+                addMediaItems(mediaItems)
+            }
             updateState()
         }
     }
