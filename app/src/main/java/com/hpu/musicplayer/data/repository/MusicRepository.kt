@@ -91,6 +91,16 @@ class MusicRepository private constructor(context: Context) {
         playHistoryDao.finishPlay(id, endTime, thisDuration)
     }
 
+    /** 仅更新当前记录的收听时长（定期保存，防止 App 被杀丢失） */
+    suspend fun updatePlayHistoryDuration(id: Long, duration: Long) = withContext(Dispatchers.IO) {
+        playHistoryDao.updateDuration(id, duration)
+    }
+
+    /** 获取某首歌最近一条未结束的历史记录（恢复累计用） */
+    suspend fun getUnfinishedHistoryForSong(songId: Long): PlayHistory? = withContext(Dispatchers.IO) {
+        playHistoryDao.getUnfinishedForSong(songId)
+    }
+
     suspend fun insertPlayHistory(history: PlayHistory) = withContext(Dispatchers.IO) {
         playHistoryDao.insert(history)
     }
@@ -113,7 +123,8 @@ class MusicRepository private constructor(context: Context) {
 
     /** 补全孤儿记录的结束时间（App 崩溃后恢复），并清理超过 7 天的残留脏数据 */
     suspend fun cleanupOrphanHistory() = withContext(Dispatchers.IO) {
-        playHistoryDao.finalizeOrphans()
+        val dayAgo = System.currentTimeMillis() - 24 * 60 * 60 * 1000L
+        playHistoryDao.finalizeOrphans(dayAgo)
         val weekAgo = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
         playHistoryDao.deleteOldOrphans(weekAgo)
     }

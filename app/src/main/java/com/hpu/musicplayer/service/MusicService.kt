@@ -144,6 +144,8 @@ class MusicService : MediaSessionService() {
     private var sessionListenTimeMs: Long = 0L
     private var lastKnownPosition: Long = 0L
     private var currentHistoryId: Long = 0L
+    private var lastHistorySongId: Long = -1L
+    private val minHistoryIntervalMs = 2000L
 
     // ------------------- MediaSession 回调 -------------------
     private inner class MySessionCallback : MediaSession.Callback {
@@ -413,7 +415,10 @@ class MusicService : MediaSessionService() {
 
     override fun onDestroy() {
         runBlocking {
-            historyMutex.withLock { finalizeCurrentHistory() }
+            // 只持久化时长但不定死 endTime，下次恢复时可续接
+            if (currentHistoryId > 0) {
+                repository.updatePlayHistoryDuration(currentHistoryId, sessionListenTimeMs)
+            }
             saveCurrentState()
         }
         progressUpdateJob?.cancel()
@@ -614,27 +619,37 @@ class MusicService : MediaSessionService() {
         val index = playlist.indexOfFirst { it.id == song.id }
         if (index < 0) {
             prepareSong(song, position)
-            return
+        } else {
+            currentSong = song
+            currentIndex = index
+            _currentIndexFlow.value = index
+
+            pendingSeekIndex = index
+            pendingSeekPosition = position
+
+            player?.apply {
+                playWhenReady = false
+                prepare()
+            }
+
+            _playerState.value = PlayerData(
+                currentSong = song,
+                state = PlaybackState.PAUSED,
+                progress = position,
+                duration = song.duration
+            )
         }
-
-        currentSong = song
-        currentIndex = index
-        _currentIndexFlow.value = index
-
-        pendingSeekIndex = index
-        pendingSeekPosition = position
-
-        player?.apply {
-            playWhenReady = false
-            prepare()
+        // 同步查找未结束记录续接，确保切歌前 currentHistoryId 已就位
+        runBlocking {
+            val existing = repository.getUnfinishedHistoryForSong(song.id)
+            if (existing != null) {
+                currentHistoryId = existing.id
+                sessionListenTimeMs = existing.thisDuration
+                lastKnownPosition = position
+            } else {
+                transitionHistory(song)
+            }
         }
-
-        _playerState.value = PlayerData(
-            currentSong = song,
-            state = PlaybackState.PAUSED,
-            progress = position,
-            duration = song.duration   // 这里用歌曲元数据时长
-        )
     }
 
     fun addToQueue(songs: List<Song>) {
@@ -850,8 +865,14 @@ class MusicService : MediaSessionService() {
 
     private suspend fun recordPlayHistory(song: Song): Long {
         return try {
-            val id = repository.recordPlayHistory(song)
-            sessionListenTimeMs = 0L
+            val unfinished = repository.getUnfinishedHistoryForSong(song.id)
+            val baseDuration = unfinished?.thisDuration?.takeIf { it > 0 } ?: 0L
+            val id = if (unfinished != null) {
+                unfinished.id
+            } else {
+                repository.recordPlayHistory(song)
+            }
+            sessionListenTimeMs = baseDuration
             lastKnownPosition = (player?.currentPosition?.coerceAtLeast(0)) ?: 0L
             id
         } catch (e: Exception) {
@@ -878,8 +899,13 @@ class MusicService : MediaSessionService() {
     private fun transitionHistory(song: Song) {
         serviceScope.launch {
             historyMutex.withLock {
+                if (song.id == lastHistorySongId) {
+                    val lastId = currentHistoryId
+                    if (lastId > 0) return@withLock
+                }
                 finalizeCurrentHistory()
                 currentHistoryId = recordPlayHistory(song)
+                lastHistorySongId = song.id
             }
         }
     }
@@ -914,25 +940,31 @@ class MusicService : MediaSessionService() {
         }
     }
 
-    // 保存当前播放状态到数据库
+    // 保存当前播放状态到数据库，同时持久化收听时长
     private suspend fun saveCurrentState() {
         val song = currentSong ?: return
         val progress = withContext(Dispatchers.Main) {
             player?.currentPosition ?: 0
         }
-        if (progress == lastSavedProgress) return
-        lastSavedProgress = progress
-
-        val state = PlaybackStateEntity(
-            currentSongId = song.id,
-            position = progress,
-            playMode = playMode.name
-        )
-
-        try {
-            repository.savePlaybackState(state)
-        } catch (e: Exception) {
-            Log.e(TAG, "Save state error: ${e.message}")
+        if (progress != lastSavedProgress) {
+            lastSavedProgress = progress
+            val state = PlaybackStateEntity(
+                currentSongId = song.id,
+                position = progress,
+                playMode = playMode.name
+            )
+            try {
+                repository.savePlaybackState(state)
+            } catch (e: Exception) {
+                Log.e(TAG, "Save state error: ${e.message}")
+            }
+        }
+        if (currentHistoryId > 0) {
+            try {
+                repository.updatePlayHistoryDuration(currentHistoryId, sessionListenTimeMs)
+            } catch (e: Exception) {
+                Log.e(TAG, "Save history duration error: ${e.message}")
+            }
         }
     }
 

@@ -26,6 +26,14 @@ interface PlayHistoryDao {
     @Query("UPDATE play_history SET endTime = :endTime, thisDuration = :duration WHERE id = :id")
     suspend fun finishPlay(id: Long, endTime: Long, duration: Long)
 
+    /** 仅更新收听时长（定期保存用，防止 App 被杀丢失） */
+    @Query("UPDATE play_history SET thisDuration = :duration WHERE id = :id AND endTime IS NULL")
+    suspend fun updateDuration(id: Long, duration: Long)
+
+    /** 获取最近一条未结束的历史记录（App 重启后恢复累计用） */
+    @Query("SELECT * FROM play_history WHERE songId = :songId AND endTime IS NULL ORDER BY playedAt DESC LIMIT 1")
+    suspend fun getUnfinishedForSong(songId: Long): PlayHistory?
+
     /** 排行榜：按播放次数（只要有 endTime 且实际收听时长 > 0 即计入） */
     @Query("""
         SELECT songId, title, artist, album, duration, path, coverPath, lrcPath,
@@ -60,14 +68,15 @@ interface PlayHistoryDao {
     @Query("DELETE FROM play_history")
     suspend fun deleteAll()
 
-    /** 补全孤儿记录的 endTime 和 thisDuration（App 崩溃/被杀后恢复，避免丢失数据） */
+    /** 补全孤儿记录的 endTime 和 thisDuration（App 崩溃/被杀后恢复，避免丢失数据）
+     *  只清理 playedAt < threshold 的记录，保留较新的未结束记录供恢复续播 */
     @Query("""
         UPDATE play_history 
         SET endTime = playedAt + COALESCE(thisDuration, duration * 0.1, 30000),
             thisDuration = COALESCE(NULLIF(thisDuration, 0), duration * 0.1, 30000)
-        WHERE endTime IS NULL
+        WHERE endTime IS NULL AND playedAt < :threshold
     """)
-    suspend fun finalizeOrphans()
+    suspend fun finalizeOrphans(threshold: Long)
 
     /** 删除超过 7 天且仍无 endTime 的残留脏数据 */
     @Query("DELETE FROM play_history WHERE endTime IS NULL AND playedAt < :before")
