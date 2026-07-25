@@ -210,18 +210,39 @@ object EmbeddedLyricsExtractor {
 
     private fun extractFromM4a(data: ByteArray): String? {
         try {
-            val lyricsTag = "©lyr".toByteArray()
-            var idx = 0
-            while (idx < data.size - 8) {
-                if (data[idx + 4] == lyricsTag[0] && data[idx + 5] == lyricsTag[1] &&
-                    data[idx + 6] == lyricsTag[2] && data[idx + 7] == lyricsTag[3]
+            // MP4 中 "©lyr" 使用 Mac Roman 编码，© = 0xA9
+            var idx = 4
+            while (idx <= data.size - 8) {
+                if (data[idx - 4].toInt() == 0xA9 &&
+                    data[idx - 3].toInt() == 0x6C && data[idx - 2].toInt() == 0x79 && data[idx - 1].toInt() == 0x72
                 ) {
-                    val atomSize = bigEndianInt(data, idx)
-                    if (atomSize > 16 && idx + atomSize <= data.size) {
-                        val content = String(data, idx + 16, atomSize - 16, Charsets.UTF_8)
-                        if (looksLikeLrc(content)) return content
+                    val atomSize = bigEndianInt(data, idx - 8)
+                    if (atomSize > 12 && idx - 8 + atomSize <= data.size) {
+                        var contentStart = idx + 4  // skip past "©lyr"
+                        val contentEnd = idx - 8 + atomSize
+                        // 检查是否有 data 子 atom
+                        if (contentStart + 8 <= contentEnd &&
+                            data[contentStart + 4].toInt() == 0x64 &&
+                            data[contentStart + 5].toInt() == 0x61 &&
+                            data[contentStart + 6].toInt() == 0x74 &&
+                            data[contentStart + 7].toInt() == 0x61
+                        ) {
+                            val dataAtomSize = bigEndianInt(data, contentStart)
+                            contentStart += 16  // data header(8) + type(4) + locale(4)
+                            val stringEnd = (contentStart + (dataAtomSize - 16)).coerceAtMost(contentEnd)
+                            if (stringEnd > contentStart) {
+                                val content = String(data, contentStart, stringEnd - contentStart, Charsets.UTF_8)
+                                if (looksLikeLrc(content)) return content
+                            }
+                        } else {
+                            // 无 data 包装，直接取字符串
+                            val len = contentEnd - contentStart
+                            if (len > 0) {
+                                val content = String(data, contentStart, len, Charsets.UTF_8)
+                                if (looksLikeLrc(content)) return content
+                            }
+                        }
                     }
-                    break
                 }
                 idx++
             }
@@ -233,7 +254,7 @@ object EmbeddedLyricsExtractor {
 
     private fun looksLikeLrc(text: String): Boolean {
         val trimmed = text.trim()
-        val regex = Regex("\\[\\d{2}:\\d{2}[.:]\\d{2,3}\\]")
+        val regex = Regex("\\[\\d{1,3}:\\d{2}(?:[.:]\\d{2,3})?\\]")
         return regex.containsMatchIn(trimmed)
     }
 
