@@ -299,6 +299,11 @@ class MusicService : MediaSessionService() {
                 if (player?.playWhenReady == true) {
                     transitionHistory(currentSong!!)
                     saveCurrentStateAsync()
+                } else {
+                    // 暂停状态下切歌：只定死旧记录，不创建新记录
+                    serviceScope.launch {
+                        historyMutex.withLock { finalizeCurrentHistory() }
+                    }
                 }
             }
         }
@@ -338,6 +343,7 @@ class MusicService : MediaSessionService() {
                         player?.prepare()
                         player?.play()
                     } else {
+                        serviceScope.launch { historyMutex.withLock { finalizeCurrentHistory() } }
                         // 播放列表为空，停止
                         currentSong = null
                         currentIndex = -1
@@ -346,6 +352,7 @@ class MusicService : MediaSessionService() {
                     }
                 }
             } else {
+                serviceScope.launch { historyMutex.withLock { finalizeCurrentHistory() } }
                 currentSong = null
                 currentIndex = -1
                 _currentIndexFlow.value = -1
