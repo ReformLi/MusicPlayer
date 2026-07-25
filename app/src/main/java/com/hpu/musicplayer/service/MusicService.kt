@@ -300,9 +300,12 @@ class MusicService : MediaSessionService() {
                     transitionHistory(currentSong!!)
                     saveCurrentStateAsync()
                 } else {
-                    // 暂停状态下切歌：只定死旧记录，不创建新记录
                     serviceScope.launch {
-                        historyMutex.withLock { finalizeCurrentHistory() }
+                        historyMutex.withLock {
+                            finalizeCurrentHistory()
+                            currentHistoryId = recordPlayHistory(currentSong!!)
+                            lastHistorySongId = currentSong!!.id
+                        }
                     }
                 }
             }
@@ -737,6 +740,12 @@ class MusicService : MediaSessionService() {
         val mediaItem = buildMediaItem(song)
         currentSong = song
         currentIndex = playlist.indexOfFirst { it.id == song.id }
+        if (currentIndex < 0) {
+            currentIndex = 0
+            playlist.clear()
+            playlist.add(song)
+            _playlistFlow.value = playlist.toList()
+        }
         _currentIndexFlow.value = currentIndex
 
         player?.apply {

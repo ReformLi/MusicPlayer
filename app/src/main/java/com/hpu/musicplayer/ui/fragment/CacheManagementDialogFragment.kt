@@ -68,16 +68,24 @@ class CacheManagementDialogFragment : DialogFragment() {
     }
 
     private suspend fun getCoverCacheSize(): String = withContext(Dispatchers.IO) {
-        val cacheDir = File(requireContext().cacheDir, "album_art")
-        if (!cacheDir.exists()) return@withContext "0 B"
-        val size = cacheDir.walkTopDown().sumOf { if (it.isFile) it.length() else 0L }
-        formatFileSize(size)
+        val dirs = listOf(
+            File(requireContext().filesDir, "album_art"),
+            File(requireContext().filesDir, "covers")
+        )
+        val total = dirs.sumOf { dir ->
+            if (dir.exists()) dir.walkTopDown().sumOf { if (it.isFile) it.length() else 0L } else 0L
+        }
+        formatFileSize(total)
     }
 
     private suspend fun clearCoverCache() = withContext(Dispatchers.IO) {
-        val cacheDir = File(requireContext().cacheDir, "album_art")
-        if (cacheDir.exists()) {
-            cacheDir.listFiles()?.forEach { it.delete() }
+        listOf(
+            File(requireContext().filesDir, "album_art"),
+            File(requireContext().filesDir, "covers")
+        ).forEach { dir ->
+            if (dir.exists()) {
+                dir.listFiles()?.forEach { it.delete() }
+            }
         }
     }
 

@@ -13,8 +13,8 @@ object LrcParser {
 
         val lines = file.readLines()
         val result = mutableListOf<LrcLine>()
-        // 匹配 [mm:ss.xx] 或 [mm:ss.xxx]
-        val regex = Regex("\\[(\\d{1,3}):(\\d{2})\\.(\\d{2,3})\\]")
+        // 匹配 [mm:ss.xx] / [mm:ss.xxx] / [mm:ss:xx] / [mm:ss]
+        val regex = Regex("\\[(\\d{1,3}):(\\d{2})(?:[.:](\\d{2,3}))?\\]")
 
         for (line in lines) {
             val match = regex.find(line) ?: continue
