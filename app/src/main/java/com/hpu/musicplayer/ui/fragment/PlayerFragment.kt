@@ -1,4 +1,4 @@
-﻿package com.hpu.musicplayer.ui.fragment
+package com.hpu.musicplayer.ui.fragment
 
 import android.animation.ObjectAnimator
 import android.graphics.drawable.Drawable
@@ -304,8 +304,9 @@ class PlayerFragment : Fragment() {
 
     private fun loadLyrics(song: Song) {
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val lines = if (song.lrcPath != null) {
-                LrcParser.parse(song.lrcPath)
+            val lrcPath = song.customLrcPath ?: song.lrcPath
+            val lines = if (lrcPath != null) {
+                LrcParser.parse(lrcPath)
             } else emptyList()
             withContext(Dispatchers.Main) {
                 lrcLines = lines

@@ -202,8 +202,8 @@ object ScanManager {
             album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: "未知专辑"
             duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0
             coverPath = extractCoverFromRetriever(context, retriever, path.hashCode().toString())
-                ?: extractCoverArt(context, path)  // 已支持同目录 cover
-            lrcPath = findLrcFile(path)             // 已支持同目录 .lrc
+                ?: extractCoverArt(context, path)
+            lrcPath = findLrcFile(path) ?: extractEmbeddedLyrics(context, path)
         } catch (e: Exception) {
             Log.e(TAG, "Error extracting: $path", e)
         } finally {
@@ -291,8 +291,11 @@ object ScanManager {
             val album = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ALBUM) ?: "未知专辑"
             val duration = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull() ?: 0
 
-            // 标准化路径：尝试将 SAF content URI 解析为文件绝对路径
             val songPath = normalizePath(context, uri.toString())
+
+            if (lrcPath == null && !songPath.startsWith("content://")) {
+                lrcPath = extractEmbeddedLyrics(context, songPath)
+            }
 
             result.add(
                 Song(
@@ -494,5 +497,19 @@ object ScanManager {
         val audioFile = File(audioPath)
         val lrcFile = File(audioFile.parent, "${audioFile.nameWithoutExtension}.lrc")
         return if (lrcFile.exists()) lrcFile.absolutePath else null
+    }
+
+    private fun extractEmbeddedLyrics(context: Context, audioPath: String): String? {
+        val lrcText = EmbeddedLyricsExtractor.extractSyncLyrics(audioPath) ?: return null
+        return try {
+            val destDir = File(context.filesDir, "embedded_lrcs")
+            if (!destDir.exists()) destDir.mkdirs()
+            val destFile = File(destDir, "${audioPath.hashCode()}.lrc")
+            destFile.writeText(lrcText)
+            destFile.absolutePath
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to save embedded lyrics: ${e.message}")
+            null
+        }
     }
 }
