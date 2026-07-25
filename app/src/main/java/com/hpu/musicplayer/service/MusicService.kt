@@ -25,6 +25,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.session.DefaultMediaNotificationProvider
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
@@ -36,6 +38,7 @@ import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.PlaybackStateEntity
 import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.data.repository.MusicRepository
+import com.hpu.musicplayer.utils.ScanManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -333,8 +336,35 @@ class MusicService : MediaSessionService() {
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            Log.e(TAG, "Play error: ${error.message}", error)
+            val errSong = currentSong
+            Log.e(TAG, "Play error for \"${errSong?.title}\" (${errSong?.path}): ${error.message}", error)
             showToast("播放失败: ${error.localizedMessage ?: "未知错误"}，已自动跳过")
+
+            // SAF content:// 路径自动纠正：尝试将 content URI 解析为真实文件路径
+            if (errSong != null && errSong.path.startsWith("content://")) {
+                val resolved = ScanManager.normalizePath(this@MusicService, errSong.path)
+                if (resolved != errSong.path && File(resolved).exists()) {
+                    Log.i(TAG, "Resolved content URI to file path, retrying: $resolved")
+                    val updated = errSong.copy(path = resolved)
+                    serviceScope.launch { repository.updateSong(updated) }
+                    currentSong = updated
+                    val idx = currentIndex
+                    if (idx >= 0 && idx < playlist.size) {
+                        playlist[idx] = updated
+                        _playlistFlow.value = playlist.toList()
+                    }
+                    player?.apply {
+                        removeMediaItem(idx.coerceAtLeast(0))
+                        addMediaItem(idx.coerceAtLeast(0), buildMediaItem(updated))
+                        seekTo(idx.coerceAtLeast(0), 0)
+                        prepare()
+                        play()
+                    }
+                    updateState()
+                    return
+                }
+            }
+
             // 不杀死服务，改为跳过当前歌曲
             val currentIdx = currentIndex
             if (currentIdx >= 0 && playlist.isNotEmpty()) {
@@ -381,10 +411,15 @@ class MusicService : MediaSessionService() {
         initAudioFocus()
         initWakeLock()
 
-        // 初始化 ExoPlayer
-        player = ExoPlayer.Builder(this).build().apply {
-            addListener(PlayerEventListener())
-        }
+        // 初始化 ExoPlayer（配置扩展 Extractors 以支持更多格式，启用定比特率 MP3 搜索）
+        player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(
+                DefaultMediaSourceFactory(this, DefaultExtractorsFactory()
+                    .setConstantBitrateSeekingEnabled(true))
+            )
+            .build().apply {
+                addListener(PlayerEventListener())
+            }
 
         // 初始化 MediaSession
         mediaSession = MediaSession.Builder(this, player!!)
