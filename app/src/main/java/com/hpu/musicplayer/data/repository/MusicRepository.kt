@@ -95,6 +95,10 @@ class MusicRepository private constructor(context: Context) {
         playHistoryDao.insert(history)
     }
 
+    suspend fun insertOrReplacePlayHistory(history: PlayHistory) = withContext(Dispatchers.IO) {
+        playHistoryDao.insertOrReplace(history)
+    }
+
     suspend fun deletePlayHistory(history: PlayHistory) = withContext(Dispatchers.IO) {
         playHistoryDao.delete(history)
     }
@@ -107,9 +111,11 @@ class MusicRepository private constructor(context: Context) {
         playHistoryDao.deleteSince(since)
     }
 
-    /** 清理孤儿记录（endTime 为 NULL 的脏数据） */
-    suspend fun deleteOrphanHistory() = withContext(Dispatchers.IO) {
-        playHistoryDao.deleteOrphans()
+    /** 补全孤儿记录的结束时间（App 崩溃后恢复），并清理超过 7 天的残留脏数据 */
+    suspend fun cleanupOrphanHistory() = withContext(Dispatchers.IO) {
+        playHistoryDao.finalizeOrphans()
+        val weekAgo = System.currentTimeMillis() - 7 * 24 * 60 * 60 * 1000L
+        playHistoryDao.deleteOldOrphans(weekAgo)
     }
 
     companion object {

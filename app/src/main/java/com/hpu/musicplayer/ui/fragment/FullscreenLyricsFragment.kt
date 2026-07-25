@@ -66,9 +66,10 @@ class FullscreenLyricsFragment : Fragment() {
         // 清除 ActionBar 标题文字，返回键右边不显示任何文字
         (requireActivity() as? androidx.appcompat.app.AppCompatActivity)?.supportActionBar?.title = ""
 
-        // 将 Toolbar 背景色统一为歌词页面背景色，消除页面顶部的色差
         val toolbar = requireActivity().findViewById<com.google.android.material.appbar.MaterialToolbar>(R.id.toolbar)
-        originalToolbarBackground = toolbar?.background
+        if (originalToolbarBackground == null) {
+            originalToolbarBackground = toolbar?.background
+        }
         val typedValue = android.util.TypedValue()
         requireContext().theme.resolveAttribute(android.R.attr.colorBackground, typedValue, true)
         toolbar?.setBackgroundColor(typedValue.data)

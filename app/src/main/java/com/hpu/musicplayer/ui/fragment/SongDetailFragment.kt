@@ -69,8 +69,7 @@ class SongDetailFragment : Fragment() {
 
     private fun loadSong() {
         lifecycleScope.launch {
-            val db = AppDatabase.getDatabase(requireContext())
-            currentSong = db.songDao().getSongById(songId)
+            currentSong = playerViewModel.getSongById(songId)
             currentSong?.let { song ->
                 binding.etTitle.setText(song.title)
                 binding.etArtist.setText(song.artist)
@@ -110,7 +109,6 @@ class SongDetailFragment : Fragment() {
             requireContext().contentResolver.openInputStream(uri)?.use { input ->
                 destFile.outputStream().use { output -> input.copyTo(output) }
             }
-            // 删除旧的自定义封面（如果存在且不是同一文件）
             song.customCoverPath?.let { oldPath ->
                 val oldFile = File(oldPath)
                 if (oldFile.exists() && oldFile.absolutePath != destFile.absolutePath) {
@@ -118,11 +116,7 @@ class SongDetailFragment : Fragment() {
                 }
             }
             song.customCoverPath = destFile.absolutePath
-            // 更新数据库
-            lifecycleScope.launch {
-                AppDatabase.getDatabase(requireContext()).songDao().update(song)
-            }
-            // 刷新界面预览
+            playerViewModel.updateSong(song)
             binding.ivDetailCover.load(destFile)
         } catch (e: Exception) {
             Toast.makeText(requireContext(), "保存封面失败", Toast.LENGTH_SHORT).show()
@@ -130,6 +124,7 @@ class SongDetailFragment : Fragment() {
     }
 
     private fun saveCustomLrc(uri: Uri) {
+        val song = currentSong ?: return
         val destFile = File(requireContext().filesDir, "custom_lrcs/${songId}.lrc")
         destFile.parentFile?.mkdirs()
         requireContext().contentResolver.openInputStream(uri)?.use { input ->
@@ -137,8 +132,9 @@ class SongDetailFragment : Fragment() {
                 input.copyTo(output)
             }
         }
-        currentSong?.customLrcPath = destFile.absolutePath
+        song.customLrcPath = destFile.absolutePath
         binding.tvLrcPath.text = "歌词: ${destFile.absolutePath}"
+        playerViewModel.updateSong(song)
     }
 
     private fun updateCoverPreview(path: String) {
@@ -155,10 +151,9 @@ class SongDetailFragment : Fragment() {
         song.artist = binding.etArtist.text.toString().ifBlank { song.artist }
         song.album = binding.etAlbum.text.toString().ifBlank { song.album }
         song.isFavorite = binding.swFavorite.isChecked
-        // customCoverPath 和 customLrcPath 已在选择时更新
 
         lifecycleScope.launch {
-            AppDatabase.getDatabase(requireContext()).songDao().update(song)
+            playerViewModel.updateSong(song)
             Toast.makeText(requireContext(), "保存成功", Toast.LENGTH_SHORT).show()
             parentFragmentManager.popBackStack()
         }

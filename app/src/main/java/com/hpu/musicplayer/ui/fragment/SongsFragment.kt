@@ -274,20 +274,11 @@ class SongsFragment : Fragment() {
             .setMessage("确定要删除 ${song.title} 吗？")
             .setPositiveButton("删除") { _, _ ->
                 CoverMigration.deleteCoverFiles(requireContext(), song.id)
-                lifecycleScope.launch {
-                    val db = AppDatabase.getDatabase(requireContext())
-                    val index = allSongs.indexOfFirst { it.id == song.id }
-                    if (index >= 0) {
-                        // 立即从 Service 中移除（播放列表更新）
-                        playerViewModel.removeSongByIndex(index)
-                        // 删除数据库记录，设置忽略标志，避免 Room Flow 再次触发 setPlaylist
-                        ignoreNextPlaylistUpdate = true
-                        db.songDao().delete(song)
-                        // 同时停止播放（如果删除的是当前歌曲）
-                        if (playerViewModel.playerState.value.currentSong?.id == song.id) {
-                            playerViewModel.stopPlayback()
-                        }
-                    }
+                playerViewModel.removeSongById(song.id)
+                ignoreNextPlaylistUpdate = true
+                playerViewModel.deleteSongFromDatabase(song)
+                if (playerViewModel.playerState.value.currentSong?.id == song.id) {
+                    playerViewModel.stopPlayback()
                 }
             }
             .setNegativeButton("取消", null)
@@ -310,11 +301,7 @@ class SongsFragment : Fragment() {
     }
 
     private fun toggleFavorite(song: Song) {
-        lifecycleScope.launch {
-            val updated = song.copy(isFavorite = !song.isFavorite)
-            AppDatabase.Companion.getDatabase(requireContext()).songDao().insertAll(listOf(updated))
-            // 因为 Room 主键冲突会替换，ListAdapter 会通过 collect 自动刷新
-        }
+        playerViewModel.toggleFavorite(song)
     }
 
     private fun addToQueue(song: Song) {

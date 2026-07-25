@@ -48,6 +48,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -72,6 +74,7 @@ class MusicService : MediaSessionService() {
         const val ACTION_PREPARE_SONG = "PREPARE_SONG"
         const val ACTION_SET_PLAY_MODE = "SET_PLAY_MODE"
         const val ACTION_REMOVE_SONG_INDEX = "REMOVE_SONG_INDEX"
+        const val ACTION_REMOVE_SONG_BY_ID = "REMOVE_SONG_BY_ID"
 
         const val ACTION_RESTORE_SONG = "RESTORE_SONG"
         const val ACTION_ADD_TO_QUEUE = "ADD_TO_QUEUE"
@@ -80,6 +83,7 @@ class MusicService : MediaSessionService() {
         const val EXTRA_POSITION = "position"
         const val EXTRA_MODE = "mode"
         const val EXTRA_INDEX = "index"
+        const val EXTRA_SONG_ID = "songId"
         const val EXTRA_FROM = "from"
         const val EXTRA_TO = "to"
 
@@ -136,7 +140,7 @@ class MusicService : MediaSessionService() {
     private var pendingSeekIndex = -1
     private var pendingSeekPosition = 0L
 
-    // 播放统计：实际收听时长追踪
+    private val historyMutex = Mutex()
     private var sessionListenTimeMs: Long = 0L
     private var lastKnownPosition: Long = 0L
     private var currentHistoryId: Long = 0L
@@ -159,6 +163,7 @@ class MusicService : MediaSessionService() {
                 .add(SessionCommand(ACTION_PREPARE_SONG, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_SET_PLAY_MODE, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_REMOVE_SONG_INDEX, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_REMOVE_SONG_BY_ID, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_RESTORE_SONG, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_ADD_TO_QUEUE, Bundle.EMPTY))
                 .build()
@@ -182,7 +187,7 @@ class MusicService : MediaSessionService() {
                         args.getParcelable(EXTRA_SONG)
                     if (song != null) {
                         Log.d(TAG, "ACTION_PLAY_SONG received: ${song.title}")
-                        playSongFromCommand(song)   // 下面会定义这个方法
+                        play(song)
                     } else {
                         Log.e(TAG, "ACTION_PLAY_SONG: missing song")
                     }
@@ -239,6 +244,11 @@ class MusicService : MediaSessionService() {
                 ACTION_REMOVE_SONG_INDEX -> {
                     val index = args.getInt(EXTRA_INDEX, -1)
                     if (index >= 0) removeSongAtIndex(index)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_REMOVE_SONG_BY_ID -> {
+                    val songId = args.getLong(EXTRA_SONG_ID, -1L)
+                    if (songId > 0) removeSongById(songId)
                     Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
                 ACTION_RESTORE_SONG -> {
@@ -347,11 +357,10 @@ class MusicService : MediaSessionService() {
     @UnstableApi
     override fun onCreate() {
         super.onCreate()
-        // 启动时清理上次非正常退出遗留的孤儿记录（endTime = NULL）
         serviceScope.launch {
             try {
-                repository.deleteOrphanHistory()
-                Log.i(TAG, "Cleaned orphan play history records")
+                repository.cleanupOrphanHistory()
+                Log.i(TAG, "Cleaned up orphan play history records")
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to clean orphan history: ${e.message}", e)
             }
@@ -404,7 +413,7 @@ class MusicService : MediaSessionService() {
 
     override fun onDestroy() {
         runBlocking {
-            finalizeCurrentHistory()
+            historyMutex.withLock { finalizeCurrentHistory() }
             saveCurrentState()
         }
         progressUpdateJob?.cancel()
@@ -444,9 +453,8 @@ class MusicService : MediaSessionService() {
                     val duration = playerDuration ?: (currentSong?.duration ?: 0)
                     val position = player?.currentPosition?.coerceAtLeast(0) ?: _playerState.value.progress
 
-                    // 累计实际收听时长（排除 seek 跳跃区间）
                     val diff = position - lastKnownPosition
-                    if (diff in 1..2000) {
+                    if (diff in 1..5000) {
                         sessionListenTimeMs += diff
                     }
                     lastKnownPosition = position
@@ -465,38 +473,29 @@ class MusicService : MediaSessionService() {
     fun play(song: Song) {
         if (handleSameSongPlayback(song)) return
 
-        if (playlist.isEmpty() || playlist.none { it.id == song.id }) {
-            setPlaylist(listOf(song))
-        }
-        val index = playlist.indexOfFirst { it.id == song.id }
-        if (index >= 0) playAtIndex(index)
-    }
-
-    private fun playSongFromCommand(song: Song) {
-        if (handleSameSongPlayback(song)) return
-
         val index = playlist.indexOfFirst { it.id == song.id }
         if (index >= 0) {
             playAtIndex(index)
             return
         }
 
-        // 歌曲不在当前播放列表中：直接替换播放
+        // 歌曲不在当前播放列表中：追加到队列末尾并播放
         transitionHistory(song)
-        val mediaItem = buildMediaItem(song)
-        player?.apply {
-            stop()
-            clearMediaItems()
-            setMediaItem(mediaItem)
-            prepare()
-            playWhenReady = true
-        }
-        playlist.clear()
         playlist.add(song)
-        currentSong = song
-        currentIndex = 0
-        _currentIndexFlow.value = 0
         _playlistFlow.value = playlist.toList()
+        val newIndex = playlist.size - 1
+        currentIndex = newIndex
+        currentSong = song
+        _currentIndexFlow.value = newIndex
+
+        player?.apply {
+            addMediaItem(newIndex, buildMediaItem(song))
+            seekTo(newIndex, 0)
+            playWhenReady = true
+            if (playbackState == Player.STATE_IDLE) {
+                prepare()
+            }
+        }
         updateState()
         saveCurrentStateAsync()
     }
@@ -577,33 +576,34 @@ class MusicService : MediaSessionService() {
         saveCurrentStateAsync()
     }
 
+    fun removeSongById(songId: Long) {
+        val index = playlist.indexOfFirst { it.id == songId }
+        if (index >= 0) {
+            removeSongAtIndex(index)
+        }
+    }
+
     fun removeSongAtIndex(index: Int) {
         if (index !in playlist.indices) return
 
         val wasPlaying = player?.isPlaying == true
 
-        // 从 ExoPlayer 中移除对应媒体项
         player?.removeMediaItem(index)
 
-        // 从本地列表移除
         playlist.removeAt(index)
         _playlistFlow.value = playlist.toList()
 
-        // 调整当前索引
         when {
             index < currentIndex -> currentIndex--
             index == currentIndex -> {
-                // 删除的是当前播放的歌曲，这种情况应特殊处理（你的需求可能不允许删除当前歌曲，但以防万一）
                 if (currentIndex >= playlist.size) currentIndex = playlist.size - 1
                 if (currentIndex >= 0) {
-                    // 切换到下一首或上一首
                     player?.seekTo(currentIndex, 0)
                     if (wasPlaying) player?.play()
                 } else {
                     stopPlayback()
                 }
             }
-            // index > currentIndex，无需改变 currentIndex
         }
 
         _currentIndexFlow.value = currentIndex
@@ -732,7 +732,7 @@ class MusicService : MediaSessionService() {
     }
 
     fun stopPlayback() {
-        serviceScope.launch { finalizeCurrentHistory() }
+        serviceScope.launch { historyMutex.withLock { finalizeCurrentHistory() } }
         player?.stop()
         player?.clearMediaItems()
         currentSong = null
@@ -851,9 +851,8 @@ class MusicService : MediaSessionService() {
     private suspend fun recordPlayHistory(song: Song): Long {
         return try {
             val id = repository.recordPlayHistory(song)
-            // 重置当前会话的收听计时
             sessionListenTimeMs = 0L
-            lastKnownPosition = 0L
+            lastKnownPosition = (player?.currentPosition?.coerceAtLeast(0)) ?: 0L
             id
         } catch (e: Exception) {
             Log.e(TAG, "Record play history error: ${e.message}", e)
@@ -876,11 +875,12 @@ class MusicService : MediaSessionService() {
         }
     }
 
-    /** 开始新歌播放：结束旧记录 + 创建新记录 */
     private fun transitionHistory(song: Song) {
         serviceScope.launch {
-            finalizeCurrentHistory()
-            currentHistoryId = recordPlayHistory(song)
+            historyMutex.withLock {
+                finalizeCurrentHistory()
+                currentHistoryId = recordPlayHistory(song)
+            }
         }
     }
 

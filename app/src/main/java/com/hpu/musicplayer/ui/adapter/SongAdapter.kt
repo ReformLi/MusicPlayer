@@ -2,9 +2,7 @@ package com.hpu.musicplayer.ui.adapter
 
 import android.content.Context
 import android.content.res.Resources
-import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.util.TypedValue
 import android.view.LayoutInflater
 import android.view.View
@@ -15,7 +13,7 @@ import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.bumptech.glide.Glide
+import coil.load
 import com.google.android.material.card.MaterialCardView
 import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.Song
@@ -114,14 +112,12 @@ class SongAdapter(
             binding.tvArtist.text = song.artist
             binding.tvDuration.text = formatDuration(song.duration)
 
-            // 2. 封面
             val coverPath = song.customCoverPath ?: song.coverPath
             if (!coverPath.isNullOrEmpty()) {
-                Glide.with(binding.ivCover.context)
-                    .load(File(coverPath))
-                    .placeholder(R.drawable.ic_music_note)
-                    .error(R.drawable.ic_music_note)
-                    .into(binding.ivCover)
+                binding.ivCover.load(File(coverPath)) {
+                    placeholder(R.drawable.ic_music_note)
+                    error(R.drawable.ic_music_note)
+                }
             } else {
                 binding.ivCover.setImageResource(R.drawable.ic_music_note)
             }
@@ -152,22 +148,19 @@ class SongAdapter(
             binding.tvArtist.setTextColor(defaultArtistColor)
             (binding.root as MaterialCardView).setCardBackgroundColor(defaultBgColor)
 
-            // 8. 如果当前播放，覆盖高亮样式
             if (isCurrent) {
-                // 粉红色加粗文字
-                val highlightColor = Color.parseColor("#FF1493")
-                val highlightBg = Color.parseColor("#33FF1493")
+                val primaryColor = getColorFromAttr(context, com.google.android.material.R.attr.colorPrimary)
+                val highlightBg = (primaryColor and 0x00FFFFFF) or 0x1A000000
 
-                binding.tvTitle.setTextColor(highlightColor)
+                binding.tvTitle.setTextColor(primaryColor)
                 binding.tvTitle.setTypeface(null, Typeface.BOLD)
-                binding.tvArtist.setTextColor(highlightColor)
-                // 淡浅红色圆角背景
+                binding.tvArtist.setTextColor(primaryColor)
                 (binding.root as MaterialCardView).apply {
                     setCardBackgroundColor(highlightBg)
-                    cardElevation = 0f          // 👈 消除阴影，避免分层
-                    strokeWidth = 0             // 确保无边框
+                    cardElevation = 0f
+                    strokeWidth = 0
                 }
-            }else {
+            } else {
                 // 恢复默认阴影（与 item_song.xml 中设置一致）
                 (binding.root as MaterialCardView).cardElevation = 2.dpToPx().toFloat()
             }

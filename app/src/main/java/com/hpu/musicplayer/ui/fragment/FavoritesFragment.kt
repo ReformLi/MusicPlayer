@@ -13,7 +13,6 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.hpu.musicplayer.R
-import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.databinding.FragmentSongsBinding
 import com.hpu.musicplayer.ui.adapter.SongAdapter
@@ -63,9 +62,8 @@ class FavoritesFragment : Fragment() {
         binding.recyclerViewSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerViewSongs.adapter = adapter
 
-        val songDao = AppDatabase.getDatabase(requireContext()).songDao()
         lifecycleScope.launch {
-            songDao.getFavoriteSongs().collect { songs ->
+            playerViewModel.favoriteSongs.collect { songs ->
                 allSongs = songs
                 // 根据 currentQuery 决定显示全部还是过滤
                 val displayList = if (currentQuery.isEmpty()) {
@@ -183,17 +181,11 @@ class FavoritesFragment : Fragment() {
     }
 
     private fun removeFavorite(song: Song) {
-        lifecycleScope.launch {
-            val updated = song.copy(isFavorite = false)
-            AppDatabase.getDatabase(requireContext()).songDao().update(updated)
-        }
+        playerViewModel.toggleFavorite(song)
     }
 
     private fun toggleFavorite(song: Song) {
-        lifecycleScope.launch {
-            val updated = song.copy(isFavorite = !song.isFavorite)
-            AppDatabase.getDatabase(requireContext()).songDao().update(updated)
-        }
+        playerViewModel.toggleFavorite(song)
     }
 
     private fun showSongInfo(song: Song) {

@@ -94,9 +94,8 @@ class HistoryFragment : Fragment() {
         // 滑动删除
         setupSwipeToDelete()
 
-        // 空状态
         lifecycleScope.launch {
-            AppDatabase.getDatabase(requireContext()).playHistoryDao().getAllHistory().collect { list ->
+            repository.getAllPlayHistory().collect { list ->
                 binding.tvEmptyState.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
             }
         }
@@ -363,7 +362,6 @@ class HistoryFragment : Fragment() {
 
     // ========== 滑动删除 ==========
     private fun setupSwipeToDelete() {
-        val historyDao = AppDatabase.getDatabase(requireContext()).playHistoryDao()
         val itemTouchHelper = ItemTouchHelper(object : ItemTouchHelper.SimpleCallback(
             0, ItemTouchHelper.LEFT or ItemTouchHelper.RIGHT
         ) {
@@ -377,10 +375,10 @@ class HistoryFragment : Fragment() {
                 val position = viewHolder.bindingAdapterPosition
                 if (position == RecyclerView.NO_POSITION) return
                 val history = adapter.currentList[position]
-                lifecycleScope.launch { historyDao.delete(history) }
+                lifecycleScope.launch { repository.deletePlayHistory(history) }
                 Snackbar.make(binding.root, "已从历史中移除", Snackbar.LENGTH_LONG)
                     .setAction("撤销") {
-                        lifecycleScope.launch { historyDao.insert(history) }
+                        lifecycleScope.launch { repository.insertOrReplacePlayHistory(history) }
                     }
                     .show()
             }

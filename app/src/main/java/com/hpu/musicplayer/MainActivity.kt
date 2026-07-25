@@ -23,7 +23,7 @@ import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
 import coil.load
 import com.google.android.material.navigation.NavigationView
-import com.hpu.musicplayer.data.AppDatabase
+import com.hpu.musicplayer.data.repository.MusicRepository
 import com.hpu.musicplayer.databinding.ActivityMainBinding
 import com.hpu.musicplayer.service.MusicService
 import com.hpu.musicplayer.service.PlayMode
@@ -309,7 +309,7 @@ class MainActivity : AppCompatActivity() {
     private fun initializeApp() {
         lifecycleScope.launch {
             try {
-                AppDatabase.getDatabase(this@MainActivity)
+                MusicRepository.getInstance(this@MainActivity)
 
                 startMusicService()
 
@@ -329,8 +329,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private suspend fun restorePlaybackState() {
-        val db = AppDatabase.getDatabase(this@MainActivity)
-        val savedState = db.playbackStateDao().getState() ?: return
+        val repository = MusicRepository.getInstance(this@MainActivity)
+        val savedState = repository.getPlaybackState() ?: return
 
         val mode = try {
             PlayMode.valueOf(savedState.playMode)
@@ -339,20 +339,17 @@ class MainActivity : AppCompatActivity() {
         }
         playerViewModel.setPlayMode(mode)
 
-        // 如果当前歌曲已正确恢复（如配置变更时 Service 仍在运行），跳过
         val current = playerViewModel.playerState.value
         if (current.currentSong?.id == savedState.currentSongId) return
 
-        // 设置恢复标志，防止 onMediaItemTransition 覆盖 restoreSong 的状态
         MusicService.isRestoringState = true
 
         if (savedState.currentSongId != -1L) {
-            val song = db.songDao().getSongById(savedState.currentSongId)
+            val song = repository.getSongById(savedState.currentSongId)
             if (song != null) {
                 playerViewModel.restoreSong(song, savedState.position)
             }
         }
-        // 标志解除和播放列表同步由 Service.onPlaybackStateChanged(READY) 自动完成
     }
 
     private fun showPermissionDeniedMessage() {

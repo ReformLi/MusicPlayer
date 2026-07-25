@@ -317,6 +317,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         sendCustomCommandInternal(MusicService.ACTION_REMOVE_SONG_INDEX, bundle)
     }
 
+    fun removeSongById(songId: Long) {
+        if (mediaController == null) {
+            enqueueAction { removeSongById(songId) }
+            return
+        }
+        val bundle = Bundle().apply {
+            putLong(MusicService.EXTRA_SONG_ID, songId)
+        }
+        sendCustomCommandInternal(MusicService.ACTION_REMOVE_SONG_BY_ID, bundle)
+    }
+
     fun restoreSong(song: Song, position: Long) {
         if (mediaController == null) {
             enqueueAction { restoreSong(song, position) }

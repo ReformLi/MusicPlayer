@@ -11,14 +11,16 @@ import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.hpu.musicplayer.R
-import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.databinding.FragmentSongsBinding
+import com.hpu.musicplayer.viewmodel.PlayerViewModel
+import androidx.fragment.app.viewModels
 import com.hpu.musicplayer.ui.adapter.SongAdapter
 import kotlinx.coroutines.launch
 
 class MusicLibraryFragment : Fragment() {
     private var _binding: FragmentSongsBinding? = null
     private val binding get() = _binding!!
+    private val playerViewModel: PlayerViewModel by viewModels({ requireActivity() })
     private var allSongs = emptyList<com.hpu.musicplayer.data.Song>()
     private lateinit var adapter: SongAdapter
 
@@ -48,9 +50,8 @@ class MusicLibraryFragment : Fragment() {
         binding.recyclerViewSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerViewSongs.adapter = adapter
 
-        val songDao = AppDatabase.getDatabase(requireContext()).songDao()
         lifecycleScope.launch {
-            songDao.getAllSongs().collect { songs ->
+            playerViewModel.allSongs.collect { songs ->
                 allSongs = songs
                 // 根据 currentQuery 决定显示全部还是过滤
                 val displayList = if (currentQuery.isEmpty()) {
