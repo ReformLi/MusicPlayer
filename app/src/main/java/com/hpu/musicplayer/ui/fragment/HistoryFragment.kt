@@ -98,12 +98,6 @@ class HistoryFragment : Fragment() {
 
         // 滑动删除
         setupSwipeToDelete()
-
-        lifecycleScope.launch {
-            repository.getAllPlayHistory().collect { list ->
-                binding.tvEmptyState.visibility = if (list.isEmpty()) View.VISIBLE else View.GONE
-            }
-        }
     }
 
     // ========== Toolbar 菜单 ==========
@@ -403,6 +397,7 @@ class HistoryFragment : Fragment() {
             }
         }
         adapter.submitList(filtered)
+        binding.tvEmptyState.visibility = if (filtered.isEmpty()) View.VISIBLE else View.GONE
     }
 
     private fun showSongInfoDialog(history: PlayHistory) {
