@@ -2,6 +2,8 @@ package com.hpu.musicplayer.ui.adapter
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.hpu.musicplayer.R
@@ -14,16 +16,7 @@ import java.util.Locale
 
 class HistoryAdapter(
     private val onItemClick: (PlayHistory) -> Unit
-) : RecyclerView.Adapter<HistoryAdapter.ViewHolder>() {
-
-    private var items = listOf<PlayHistory>()
-
-    val currentList: List<PlayHistory> get() = items
-
-    fun submitList(list: List<PlayHistory>) {
-        items = list
-        notifyDataSetChanged()
-    }
+) : ListAdapter<PlayHistory, HistoryAdapter.ViewHolder>(DiffCallback()) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemHistorySongBinding.inflate(
@@ -33,7 +26,7 @@ class HistoryAdapter(
     }
 
     override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val history = items[position]
+        val history = getItem(position)
         holder.binding.tvTitle.text = history.title
         holder.binding.tvArtist.text = history.artist
 
@@ -73,7 +66,14 @@ class HistoryAdapter(
         holder.binding.root.setOnClickListener { onItemClick(history) }
     }
 
-    override fun getItemCount(): Int = items.size
+    override fun getItemCount(): Int = currentList.size
+
+    class DiffCallback : DiffUtil.ItemCallback<PlayHistory>() {
+        override fun areItemsTheSame(oldItem: PlayHistory, newItem: PlayHistory) =
+            oldItem.id == newItem.id
+        override fun areContentsTheSame(oldItem: PlayHistory, newItem: PlayHistory) =
+            oldItem == newItem
+    }
 
     private fun formatDuration(ms: Long): String {
         val totalSeconds = ms / 1000
