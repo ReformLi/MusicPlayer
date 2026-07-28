@@ -304,10 +304,12 @@ class MusicService : MediaSessionService() {
                     saveCurrentStateAsync()
                 } else {
                     serviceScope.launch {
+                        val song = currentSong ?: return@launch
                         historyMutex.withLock {
+                            if (song.id == lastHistorySongId && currentHistoryId > 0) return@withLock
                             finalizeCurrentHistory()
-                            currentHistoryId = recordPlayHistory(currentSong!!)
-                            lastHistorySongId = currentSong!!.id
+                            currentHistoryId = recordPlayHistory(song)
+                            lastHistorySongId = song.id
                         }
                     }
                 }
@@ -691,6 +693,7 @@ class MusicService : MediaSessionService() {
                 currentHistoryId = existing.id
                 sessionListenTimeMs = existing.thisDuration
                 lastKnownPosition = position
+                lastHistorySongId = song.id
             } else {
                 transitionHistory(song)
             }
