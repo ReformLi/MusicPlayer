@@ -943,13 +943,18 @@ class MusicService : MediaSessionService() {
     private fun transitionHistory(song: Song) {
         serviceScope.launch {
             historyMutex.withLock {
-                if (song.id == lastHistorySongId) {
-                    val lastId = currentHistoryId
-                    if (lastId > 0) return@withLock
+                if (song.id == lastHistorySongId && currentHistoryId > 0) return@withLock
+                val oldId = currentHistoryId
+                if (oldId > 0) {
+                    currentHistoryId = repository.finishPlayAndRecordNext(
+                        oldId, System.currentTimeMillis(), sessionListenTimeMs, song
+                    )
+                } else {
+                    currentHistoryId = recordPlayHistory(song)
                 }
-                finalizeCurrentHistory()
-                currentHistoryId = recordPlayHistory(song)
                 lastHistorySongId = song.id
+                sessionListenTimeMs = 0L
+                lastKnownPosition = 0L
             }
         }
     }

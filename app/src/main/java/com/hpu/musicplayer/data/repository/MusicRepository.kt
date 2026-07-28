@@ -91,6 +91,24 @@ class MusicRepository private constructor(context: Context) {
         playHistoryDao.finishPlay(id, endTime, thisDuration)
     }
 
+    /** 原子操作：结束旧记录 + 插入下一条记录，仅触发一次 Room 发射 */
+    suspend fun finishPlayAndRecordNext(oldId: Long, endTime: Long, duration: Long, song: Song): Long = withContext(Dispatchers.IO) {
+        playHistoryDao.finishPlayAndInsert(
+            oldId, endTime, duration,
+            PlayHistory(
+                songId = song.id,
+                title = song.title,
+                artist = song.artist,
+                album = song.album,
+                duration = song.duration,
+                path = song.path,
+                coverPath = song.coverPath,
+                lrcPath = song.lrcPath,
+                playedAt = System.currentTimeMillis()
+            )
+        )
+    }
+
     /** 仅更新当前记录的收听时长（定期保存，防止 App 被杀丢失） */
     suspend fun updatePlayHistoryDuration(id: Long, duration: Long) = withContext(Dispatchers.IO) {
         playHistoryDao.updateDuration(id, duration)

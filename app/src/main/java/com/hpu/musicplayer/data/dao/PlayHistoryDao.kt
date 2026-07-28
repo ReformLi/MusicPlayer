@@ -78,6 +78,13 @@ interface PlayHistoryDao {
     """)
     suspend fun finalizeOrphans(threshold: Long)
 
+    /** 原子操作：结束旧记录并插入新记录，避免中间状态导致 Flow 多发射 */
+    @Transaction
+    suspend fun finishPlayAndInsert(oldId: Long, endTime: Long, duration: Long, newHistory: PlayHistory): Long {
+        finishPlay(oldId, endTime, duration)
+        return insert(newHistory)
+    }
+
     /** 删除超过 7 天且仍无 endTime 的残留脏数据 */
     @Query("DELETE FROM play_history WHERE endTime IS NULL AND playedAt < :before")
     suspend fun deleteOldOrphans(before: Long)

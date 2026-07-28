@@ -31,6 +31,7 @@ import com.hpu.musicplayer.ui.adapter.HistoryAdapter
 import com.hpu.musicplayer.ui.adapter.RankAdapter
 import com.hpu.musicplayer.ui.dialog.SongInfoDialogFragment
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 
@@ -58,6 +59,9 @@ class HistoryFragment : Fragment() {
 
     // 搜索
     private var currentQuery = ""
+
+    // 历史 Flow 收集任务，切换时间范围时取消前一个
+    private var historyJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -176,7 +180,8 @@ class HistoryFragment : Fragment() {
             repository.getPlayHistorySince(since)
         }
 
-        lifecycleScope.launch {
+        historyJob?.cancel()
+        historyJob = lifecycleScope.launch {
             flow.debounce(500).collect { list ->
                 allHistory = list
                 applyFilter()
