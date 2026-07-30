@@ -32,7 +32,6 @@ import com.hpu.musicplayer.ui.adapter.RankAdapter
 import com.hpu.musicplayer.ui.dialog.SongInfoDialogFragment
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 
 class HistoryFragment : Fragment() {
@@ -176,7 +175,7 @@ class HistoryFragment : Fragment() {
 
         historyJob?.cancel()
         historyJob = lifecycleScope.launch {
-            flow.debounce(500).collect { list ->
+            flow.collect { list ->
                 allHistory = list
                 applyFilter()
             }

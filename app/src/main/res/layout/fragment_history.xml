@@ -89,7 +89,7 @@
             android:text="暂无播放历史"
             android:textColor="?attr/colorOnSurface"
             android:textSize="18sp"
-            android:visibility="gone" />
+            android:visibility="visible" />
 
     </FrameLayout>
 </LinearLayout>
