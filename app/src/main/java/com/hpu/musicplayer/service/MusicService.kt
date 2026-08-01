@@ -568,7 +568,16 @@ class MusicService : MediaSessionService() {
                 currentSong = playlist[currentIndex]
                 _currentIndexFlow.value = currentIndex
                 player?.apply {
-                    setMediaItems(mediaItems, currentIndex, previousPosition)
+                    // 当前播放项未变时，用增量同步代替 setMediaItems，
+                    // 避免重建时间线导致正在播放的音频中断（卡顿）
+                    val currentItemSame = currentMediaItem?.mediaId?.toLongOrNull() == previousSong.id
+                    val synced = currentItemSame && syncPlaylistIncrementally()
+                    if (!synced) {
+                        Log.d(TAG, "setPlaylist: full rebuild (currentItemSame=$currentItemSame)")
+                        setMediaItems(mediaItems, currentIndex, previousPosition)
+                    } else {
+                        Log.d(TAG, "setPlaylist: incremental sync, no audio interruption")
+                    }
                     if (playbackState == Player.STATE_IDLE) {
                         prepare()
                     }
@@ -592,6 +601,60 @@ class MusicService : MediaSessionService() {
                 addMediaItems(mediaItems)
             }
             updateState()
+        }
+    }
+
+    /**
+     * 增量同步 ExoPlayer 时间线到当前 [playlist] 的顺序，
+     * 通过 addMediaItem / removeMediaItem / moveMediaItem 完成，
+     * 不重置当前播放项与进度（不会重新打开媒体源），
+     * 避免 setMediaItems 重建时间线导致播放中的音频中断。
+     * 仅在当前播放项未变时调用；仅在发生异常时才返回 false 交由调用方回退。
+     */
+    private fun Player.syncPlaylistIncrementally(): Boolean {
+        return try {
+            val desired = playlist.map { it.id }
+            val desiredSet = desired.toSet()
+
+            // 1. 移除不在目标列表中的项（从高索引到低索引，避免索引错位）
+            var removeIdx = mediaItemCount - 1
+            while (removeIdx >= 0) {
+                val id = getMediaItemAt(removeIdx).mediaId.toLongOrNull()
+                if (id == null || id !in desiredSet) {
+                    removeMediaItem(removeIdx)
+                }
+                removeIdx--
+            }
+
+            // 2. 按目标顺序对齐：缺失项插入，乱序项移动到正确位置。
+            //    所有操作都不触碰当前播放项的媒体源，播放不会中断。
+            var cursor = 0
+            while (cursor < desired.size) {
+                val curId = if (cursor < mediaItemCount) {
+                    getMediaItemAt(cursor).mediaId.toLongOrNull()
+                } else null
+                if (curId == desired[cursor]) {
+                    cursor++
+                    continue
+                }
+                var foundAt = -1
+                for (i in cursor until mediaItemCount) {
+                    if (getMediaItemAt(i).mediaId.toLongOrNull() == desired[cursor]) {
+                        foundAt = i
+                        break
+                    }
+                }
+                if (foundAt >= 0) {
+                    moveMediaItem(foundAt, cursor)
+                } else {
+                    addMediaItem(cursor, buildMediaItem(playlist[cursor]))
+                }
+                cursor++
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "syncPlaylistIncrementally failed: ${e.message}", e)
+            false
         }
     }
 
@@ -655,7 +718,34 @@ class MusicService : MediaSessionService() {
     fun restoreSong(song: Song, position: Long) {
         val index = playlist.indexOfFirst { it.id == song.id }
         if (index < 0) {
-            prepareSong(song, position)
+            // 恢复时直接把完整库作为播放列表，避免"单曲播放列表"导致后续 play() 追加
+            // 造成队列偏离，进而在播放中触发整表重排（冷启动首次返回列表卡顿的根因）
+            val library = runBlocking { repository.getAllSongsOnce() }
+            val libIndex = library.indexOfFirst { it.id == song.id }
+            if (libIndex >= 0) {
+                setPlaylist(library)
+                currentSong = song
+                currentIndex = libIndex
+                _currentIndexFlow.value = libIndex
+
+                pendingSeekIndex = libIndex
+                pendingSeekPosition = position
+
+                player?.apply {
+                    playWhenReady = false
+                    prepare()
+                }
+
+                _playerState.value = PlayerData(
+                    currentSong = song,
+                    state = PlaybackState.PAUSED,
+                    progress = position,
+                    duration = song.duration
+                )
+            } else {
+                // 歌曲不在库中（已被删除等）：退回单曲恢复
+                prepareSong(song, position)
+            }
         } else {
             currentSong = song
             currentIndex = index

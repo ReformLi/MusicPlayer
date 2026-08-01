@@ -35,7 +35,7 @@ interface SongDao {
     suspend fun deleteMissingSongs(existingPaths: List<String>)
 
 
-    // 在 SongDao 中添加
-    @Query("SELECT * FROM songs")
-    suspend fun getAllSongsOnce(): List<Song>   // 一次性获取，非 Flow
+    // 一次性获取完整库（非 Flow），与 getAllSongs() 的展示顺序保持一致
+    @Query("SELECT * FROM songs ORDER BY title ASC")
+    suspend fun getAllSongsOnce(): List<Song>
 }
