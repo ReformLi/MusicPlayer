@@ -38,48 +38,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     val favoriteSongs = repository.getFavoriteSongs()
     val playHistory = repository.getAllPlayHistory()
 
-    // 缓存主页随机排列结果，跨页面持久化（ViewModel 生命周期 > Fragment）
-    var cachedShuffledSongs: List<Song>? = null
-    // 标志位：是否已经进行过随机排序（确保只随机一次）
-    private var isShuffleInitialized = false
     // 缓存上一次展示列表的 ID 顺序，相同则跳过 submitList
     var lastDisplaySongIds: List<Long>? = null
-
-    /**
-     * 获取展示列表：根据设置决定是否随机排列
-     * 只随机一次：app 启动后第一次调用时随机，之后始终复用缓存顺序
-     * 添加新歌曲时：保持原有随机顺序，新歌曲追加到末尾
-     * @param songs 原始歌曲列表（来自数据库，按 title ASC）
-     * @param shuffleEnabled 是否启用随机排列
-     * @return 展示列表（随机或原始顺序）
-     */
-    fun getDisplayList(songs: List<Song>, shuffleEnabled: Boolean): List<Song> {
-        if (!shuffleEnabled) {
-            // 不随机，清除缓存和标志位
-            cachedShuffledSongs = null
-            isShuffleInitialized = false
-            return songs
-        }
-        // 第一次随机
-        if (!isShuffleInitialized) {
-            val shuffled = songs.shuffled()
-            cachedShuffledSongs = shuffled
-            isShuffleInitialized = true
-            return shuffled
-        }
-        // 已随机过，检查是否有新歌曲（songs 比缓存多）
-        val cached = cachedShuffledSongs!!
-        val cachedIds = cached.map { it.id }.toSet()
-        val newSongs = songs.filter { it.id !in cachedIds }
-        if (newSongs.isEmpty()) {
-            // 没有新歌曲，直接返回缓存
-            return cached
-        }
-        // 有新歌曲，追加到末尾
-        val updated = cached + newSongs
-        cachedShuffledSongs = updated
-        return updated
-    }
 
     // ---------- MediaController 连接 ----------
     private var mediaController: MediaController? = null

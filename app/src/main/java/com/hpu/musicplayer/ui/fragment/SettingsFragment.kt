@@ -66,7 +66,7 @@ class SettingsFragment : Fragment() {
         playerViewModel = ViewModelProvider(requireActivity())[PlayerViewModel::class.java]
 
         setupNotificationControl()
-        setupShuffleOnStart()
+        setupScrollToCurrent()
         setupThemeSwitch()
         setupHelp()
         setupAbout()
@@ -115,12 +115,12 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    private fun setupShuffleOnStart() {
-        binding.switchShuffleOnStart.isChecked =
-            SettingsPreferences.isShuffleOnStartEnabled(requireContext())
+    private fun setupScrollToCurrent() {
+        binding.switchScrollToCurrent.isChecked =
+            SettingsPreferences.isScrollToCurrentEnabled(requireContext())
 
-        binding.switchShuffleOnStart.setOnCheckedChangeListener { _, isChecked ->
-            SettingsPreferences.setShuffleOnStartEnabled(requireContext(), isChecked)
+        binding.switchScrollToCurrent.setOnCheckedChangeListener { _, isChecked ->
+            SettingsPreferences.setScrollToCurrentEnabled(requireContext(), isChecked)
         }
     }
 

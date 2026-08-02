@@ -6,7 +6,7 @@ import android.content.SharedPreferences
 object SettingsPreferences {
     private const val PREFS_NAME = "app_settings"
     private const val KEY_NOTIFICATION_CONTROL = "notification_control"
-    private const val KEY_SHUFFLE_ON_START = "shuffle_on_start"
+    private const val KEY_SCROLL_TO_CURRENT = "scroll_to_current"
     private const val KEY_THEME_MODE = "theme_mode"
     private const val KEY_THEME_ACCENT = "theme_accent"
 
@@ -21,12 +21,12 @@ object SettingsPreferences {
         getPrefs(context).edit().putBoolean(KEY_NOTIFICATION_CONTROL, enabled).apply()
     }
 
-    // 每次打开 app 主页列表随机排列
-    fun isShuffleOnStartEnabled(context: Context): Boolean =
-        getPrefs(context).getBoolean(KEY_SHUFFLE_ON_START, false) // 默认关闭
+    // 每次打开应用时自动定位到当前播放歌曲
+    fun isScrollToCurrentEnabled(context: Context): Boolean =
+        getPrefs(context).getBoolean(KEY_SCROLL_TO_CURRENT, true) // 默认开启
 
-    fun setShuffleOnStartEnabled(context: Context, enabled: Boolean) {
-        getPrefs(context).edit().putBoolean(KEY_SHUFFLE_ON_START, enabled).apply()
+    fun setScrollToCurrentEnabled(context: Context, enabled: Boolean) {
+        getPrefs(context).edit().putBoolean(KEY_SCROLL_TO_CURRENT, enabled).apply()
     }
 
     // Theme settings

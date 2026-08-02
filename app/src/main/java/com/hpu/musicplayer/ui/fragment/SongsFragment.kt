@@ -45,6 +45,8 @@ class SongsFragment : Fragment() {
 
     private var currentQuery = ""
 
+    private var hasAutoScrolledToCurrent = false
+
     private var ignoreNextPlaylistUpdate = false
 
     // 文件夹选择器
@@ -119,9 +121,9 @@ class SongsFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             playerViewModel.allSongs.collect { songs ->
                 allSongs = songs
-                // 展示列表：无搜索时根据设置决定是否随机排列，有搜索时按过滤结果
+                // 展示列表：无搜索时直接使用歌曲库顺序，有搜索时按过滤结果
                 val displayList = if (currentQuery.isEmpty()) {
-                    playerViewModel.getDisplayList(songs, SettingsPreferences.isShuffleOnStartEnabled(requireContext()))
+                    songs
                 } else {
                     songs.filter {
                         it.title.contains(currentQuery, true) ||
@@ -136,6 +138,9 @@ class SongsFragment : Fragment() {
                     playerViewModel.lastDisplaySongIds = newIds
                 }
 
+                // 冷启动定位到当前播放歌曲（需列表已就绪）
+                maybeScrollToCurrentSong()
+
                 if (ignoreNextPlaylistUpdate) {
                     ignoreNextPlaylistUpdate = false
                     // 已经通过 removeSongByIndex 更新了 Service，这里跳过 setPlaylist
@@ -144,7 +149,7 @@ class SongsFragment : Fragment() {
                     // 正常更新（增、改等）
                     // 冷启动恢复期间跳过 setPlaylist，避免覆盖 restoreSong 的状态
                     if (MusicService.isRestoringState) return@collect
-                    // 播放列表也按展示顺序（随机或原始）设置
+                    // 播放列表也按展示顺序设置
                     // 用 ID 列表比较，避免引用不同但内容相同时重复设置
                     val currentServiceIds = MusicService.playlistFlow.value.map { it.id }
                     val newPlaylistIds = displayList.map { it.id }
@@ -161,6 +166,8 @@ class SongsFragment : Fragment() {
             playerViewModel.playerState.collect { data ->
                 val songId = data.currentSong?.id ?: -1
                 adapter.updateCurrentSongId(songId)
+                // 冷启动恢复的 currentSong 可能晚于列表加载，这里补一次定位
+                maybeScrollToCurrentSong()
             }
         }
 
@@ -211,8 +218,8 @@ class SongsFragment : Fragment() {
                 // 保持原有逻辑即可，因为焦点监听已经处理了可见性
 
                 val filtered = if (query.isEmpty()) {
-                    // 搜索清空时，使用与主页相同的展示逻辑（随机或原始）
-                    playerViewModel.getDisplayList(allSongs, SettingsPreferences.isShuffleOnStartEnabled(requireContext()))
+                    // 搜索清空时，回到完整的歌曲库顺序
+                    allSongs
                 } else allSongs.filter { song ->
                     song.title.contains(query, ignoreCase = true) ||
                             song.artist.contains(query, ignoreCase = true) ||
@@ -268,6 +275,20 @@ class SongsFragment : Fragment() {
     }
 
     // ---------- 歌曲操作 ----------
+
+    // 冷启动时定位到当前播放歌曲所在行（仅定位一次，不干扰用户后续滚动）
+    private fun maybeScrollToCurrentSong() {
+        if (hasAutoScrolledToCurrent) return
+        if (!SettingsPreferences.isScrollToCurrentEnabled(requireContext())) return
+        if (currentQuery.isNotEmpty()) return
+        val songId = playerViewModel.playerState.value.currentSong?.id ?: -1
+        if (songId == -1L) return
+        val index = adapter.currentList.indexOfFirst { it.id == songId }
+        if (index == -1) return
+        hasAutoScrolledToCurrent = true
+        binding.recyclerViewSongs.scrollToPosition(index)
+    }
+
     private fun deleteSong(song: Song) {
         AlertDialog.Builder(requireContext())
             .setTitle("删除歌曲")

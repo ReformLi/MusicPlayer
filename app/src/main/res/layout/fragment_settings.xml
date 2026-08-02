@@ -88,7 +88,7 @@
 
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Shuffle on start card -->
+            <!-- Scroll to current song card -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -115,7 +115,7 @@
                         <TextView
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:text="随机排列"
+                            android:text="定位播放歌曲"
                             android:textColor="?attr/colorOnSurface"
                             android:textSize="16sp"
                             android:textStyle="bold" />
@@ -124,14 +124,14 @@
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="每次打开应用时随机排列主页歌曲列表"
+                            android:text="每次打开应用时自动定位到当前播放歌曲"
                             android:textColor="?attr/colorOnSurfaceVariant"
                             android:textSize="14sp" />
 
                     </LinearLayout>
 
                     <com.google.android.material.switchmaterial.SwitchMaterial
-                        android:id="@+id/switchShuffleOnStart"
+                        android:id="@+id/switchScrollToCurrent"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="16dp" />
