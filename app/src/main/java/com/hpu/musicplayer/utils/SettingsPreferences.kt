@@ -9,6 +9,7 @@ object SettingsPreferences {
     private const val KEY_SCROLL_TO_CURRENT = "scroll_to_current"
     private const val KEY_THEME_MODE = "theme_mode"
     private const val KEY_THEME_ACCENT = "theme_accent"
+    private const val KEY_TRANSCODE_MAP = "transcode_map"  // 源路径 -> 转码缓存路径 映射
 
     private fun getPrefs(context: Context): SharedPreferences =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
@@ -49,4 +50,23 @@ object SettingsPreferences {
     fun isValidThemeMode(mode: String): Boolean {
         return ThemeHelper.isValidThemeMode(mode)
     }
+
+    // ---------- 转码缓存映射（源路径 -> 缓存路径）----------
+
+    /** 查询某源文件是否已有转码缓存，返回缓存路径（不存在返回 null） */
+    fun getTranscodedPath(context: Context, sourcePath: String): String? =
+        getPrefs(context).getString(transcodeKey(sourcePath), null)
+
+    /** 记录转码缓存路径 */
+    fun setTranscodedPath(context: Context, sourcePath: String, cachedPath: String) {
+        getPrefs(context).edit().putString(transcodeKey(sourcePath), cachedPath).apply()
+    }
+
+    /** 删除某源文件的转码缓存记录（不删文件，仅清映射） */
+    fun removeTranscodedPath(context: Context, sourcePath: String) {
+        getPrefs(context).edit().remove(transcodeKey(sourcePath)).apply()
+    }
+
+    private fun transcodeKey(sourcePath: String): String =
+        "$KEY_TRANSCODE_MAP:$sourcePath"
 }

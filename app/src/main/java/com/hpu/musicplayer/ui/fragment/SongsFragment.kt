@@ -28,6 +28,7 @@ import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.databinding.FragmentSongsBinding
 import com.hpu.musicplayer.service.MusicService
 import com.hpu.musicplayer.ui.adapter.SongAdapter
+import com.hpu.musicplayer.utils.AudioTranscoder
 import com.hpu.musicplayer.utils.CoverMigration
 import com.hpu.musicplayer.utils.SettingsPreferences
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
@@ -295,6 +296,7 @@ class SongsFragment : Fragment() {
             .setMessage("确定要删除 ${song.title} 吗？")
             .setPositiveButton("删除") { _, _ ->
                 CoverMigration.deleteCoverFiles(requireContext(), song.id)
+                AudioTranscoder.deleteCachedTranscode(requireContext(), song.path)
                 playerViewModel.removeSongById(song.id)
                 ignoreNextPlaylistUpdate = true
                 playerViewModel.deleteSongFromDatabase(song)

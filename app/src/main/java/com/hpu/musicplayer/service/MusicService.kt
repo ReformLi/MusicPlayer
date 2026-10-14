@@ -10,6 +10,7 @@ import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.media.AudioManager.OnAudioFocusChangeListener
+import android.media.MediaPlayer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -25,6 +26,8 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.mediacodec.MediaCodecDecoderException
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.session.DefaultMediaNotificationProvider
@@ -38,7 +41,9 @@ import com.hpu.musicplayer.R
 import com.hpu.musicplayer.data.PlaybackStateEntity
 import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.data.repository.MusicRepository
+import com.hpu.musicplayer.utils.AudioTranscoder
 import com.hpu.musicplayer.utils.ScanManager
+import com.hpu.musicplayer.utils.SettingsPreferences
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -127,7 +132,12 @@ class MusicService : MediaSessionService() {
     private val noisyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (AudioManager.ACTION_AUDIO_BECOMING_NOISY == intent?.action) {
-                player?.pause()
+                if (isFallbackActive()) {
+                    fallbackPlayer?.pause()
+                    _playerState.value = _playerState.value.copy(state = PlaybackState.PAUSED)
+                } else {
+                    player?.pause()
+                }
             }
         }
     }
@@ -142,6 +152,16 @@ class MusicService : MediaSessionService() {
 
     private var pendingSeekIndex = -1
     private var pendingSeekPosition = 0L
+
+    // 系统 MediaPlayer 兜底：用于播放损坏的 FLAC（华为 OMX.google.flac.decoder 容错差会崩溃）
+    // 系统 MediaPlayer 内部走 AOSP 软解，对坏帧容错性更好
+    private var fallbackPlayer: MediaPlayer? = null
+    private var fallbackProgressJob: Job? = null
+
+    // 错误处理重入保护：onPlayerError 处理期间（兜底 + 跳过）拒绝再次进入，
+    // 否则 ExoPlayer 反复解码同一个损坏文件会形成「兜底失败 → play() 重试 → 再崩」的死循环，
+    // 表现为：卡在同一首歌、上一首/下一首/停止按钮全部失效。
+    private var errorHandlingInProgress = false
 
     private val historyMutex = Mutex()
     private var sessionListenTimeMs: Long = 0L
@@ -295,6 +315,8 @@ class MusicService : MediaSessionService() {
             val newIndex = player?.currentMediaItemIndex ?: -1
             Log.d(TAG, "onMediaItemTransition: newIndex=$newIndex, reason=$reason, repeatMode=${player?.repeatMode}, shuffle=${player?.shuffleModeEnabled}")
             if (newIndex != -1 && newIndex < playlist.size) {
+                // 兜底期间切歌：释放系统 MediaPlayer，恢复 ExoPlayer 正常播放
+                releaseFallbackPlayer()
                 currentIndex = newIndex
                 currentSong = playlist[currentIndex]
                 _currentIndexFlow.value = currentIndex
@@ -302,6 +324,25 @@ class MusicService : MediaSessionService() {
                 if (player?.playWhenReady == true) {
                     transitionHistory(currentSong!!)
                     saveCurrentStateAsync()
+                }
+            }
+        }
+
+        // 兜底期间的播放/暂停同步：ExoPlayer 的 playWhenReady 变化时同步系统 MediaPlayer
+        override fun onPlayWhenReadyChanged(playWhenReady: Boolean, reason: Int) {
+            val mp = fallbackPlayer ?: return
+            if (playWhenReady) {
+                // 用户点击播放：恢复 MediaPlayer（ExoPlayer 仍会尝试播损坏文件并崩溃，
+                // 但 onPlayerError 里已通过 isFallbackActive 抑制重复兜底/跳过）
+                if (!mp.isPlaying) {
+                    try { mp.start() } catch (_: Exception) {}
+                    _playerState.value = _playerState.value.copy(state = PlaybackState.PLAYING)
+                }
+            } else {
+                // 用户点击暂停：暂停 MediaPlayer
+                if (mp.isPlaying) {
+                    try { mp.pause() } catch (_: Exception) {}
+                    _playerState.value = _playerState.value.copy(state = PlaybackState.PAUSED)
                 }
             }
         }
@@ -330,6 +371,30 @@ class MusicService : MediaSessionService() {
         override fun onPlayerError(error: PlaybackException) {
             val errSong = currentSong
             Log.e(TAG, "Play error for \"${errSong?.title}\" (${errSong?.path}): ${error.message}", error)
+
+            // 错误处理重入保护：处理期间直接丢弃重复的 error 回调，
+            // 阻断「play() 重试 → 再崩 → 再兜底」的死循环。
+            if (errorHandlingInProgress) {
+                Log.w(TAG, "Error handling already in progress, ignoring duplicate error for \"${errSong?.title}\"")
+                return
+            }
+
+            // 兜底播放已激活：ExoPlayer 再次崩溃（如用户点播放触发重播损坏文件）时抑制，
+            // 避免重复启动兜底或误跳过，MediaPlayer 已在出声。
+            if (isFallbackActive()) {
+                Log.w(TAG, "Fallback active, ignoring ExoPlayer error: \"${errSong?.title}\"")
+                return
+            }
+
+            errorHandlingInProgress = true
+            try {
+                handlePlayerError(error, errSong)
+            } finally {
+                errorHandlingInProgress = false
+            }
+        }
+
+        private fun handlePlayerError(error: PlaybackException, errSong: Song?) {
             showToast("播放失败: ${error.localizedMessage ?: "未知错误"}，已自动跳过")
 
             // SAF content:// 路径自动纠正：尝试将 content URI 解析为真实文件路径
@@ -357,35 +422,208 @@ class MusicService : MediaSessionService() {
                 }
             }
 
-            // 不杀死服务，改为跳过当前歌曲
-            val currentIdx = currentIndex
-            if (currentIdx >= 0 && playlist.isNotEmpty()) {
-                player?.removeMediaItem(currentIdx)
-                if (playlist.isNotEmpty()) {
-                    currentIndex = currentIdx.coerceIn(0, playlist.size - 1)
-                    if (playlist.isNotEmpty() && currentIndex < playlist.size) {
-                        currentSong = playlist[currentIndex]
-                        player?.prepare()
-                        player?.play()
-                    } else {
-                        serviceScope.launch { historyMutex.withLock { finalizeCurrentHistory() } }
-                        // 播放列表为空，停止
-                        currentSong = null
-                        currentIndex = -1
-                        _currentIndexFlow.value = -1
-                        _playerState.value = PlayerData(null, PlaybackState.STOPPED, 0, 0)
-                    }
+            // FLAC 解码崩溃兜底：华为 OMX.google.flac.decoder 对损坏的 FLAC（含坏帧）容错差，
+            // 直接崩溃（dequeueInputBuffer IllegalStateException）。
+            // 注意：onPlayerError 的 error 是 ExoPlaybackException，真正的解码异常在其 cause 里。
+            val cause = error.cause
+            if (cause is MediaCodecDecoderException && errSong != null &&
+                errSong.path.endsWith(".flac", ignoreCase = true)) {
+                // 后台转码该损坏 FLAC 为 M4A，下次播放直接命中缓存，彻底解决
+                triggerTranscode(errSong)
+
+                val started = startFallbackPlayback(errSong)
+                if (started) {
+                    Log.w(TAG, "FLAC decoder crash, fallback to system MediaPlayer: \"${errSong.title}\"")
+                    return
                 }
+                Log.w(TAG, "Fallback MediaPlayer also failed, skipping: \"${errSong.title}\"")
+            }
+
+            // 不杀死服务，改为跳过当前歌曲（保留在列表）
+            skipCurrentAndPlayNext()
+        }
+    }
+
+    // 后台触发 FLAC → M4A 转码，成功后记录缓存路径，下次播放直接命中
+    private fun triggerTranscode(song: Song) {
+        val sourcePath = song.path
+        // 已有缓存则跳过
+        if (SettingsPreferences.getTranscodedPath(this, sourcePath) != null) return
+
+        serviceScope.launch(Dispatchers.IO) {
+            try {
+                val outPath = AudioTranscoder.transcodeAsync(this@MusicService, sourcePath)
+                if (outPath != null) {
+                    SettingsPreferences.setTranscodedPath(this@MusicService, sourcePath, outPath)
+                    Log.i(TAG, "Transcoded FLAC cached: \"${song.title}\" -> $outPath")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Transcode failed for \"${song.title}\": ${e.message}")
+            }
+        }
+    }
+
+    // 跳过当前报错的歌曲，并切到下一首。
+    // 关键：不移除失败歌曲（保留在列表），只推进索引到下一首。
+    // 这样用户点「上一首」能跳回失败歌曲，且转码完成后可重新播放。
+    //
+    // 死循环修复：ExoPlayer 处于错误状态时，若直接 seekTo(next)+play()，
+    // play() 会把 playWhenReady 重新置 true，触发 ExoPlayer 再次解码损坏文件 →
+    // 再次 onPlayerError → 再次兜底，形成无限循环，导致上一首/下一首/停止全部失效。
+    // 因此这里必须先 stop() 让 ExoPlayer 彻底脱离当前损坏媒体源（回 IDLE），
+    // 再推进索引 + prepare()，且【不调用 play()】——播放由下一首的正常流程/用户操作驱动。
+    private fun skipCurrentAndPlayNext() {
+        val currentIdx = currentIndex
+        if (currentIdx >= 0 && currentIdx < playlist.size) {
+            if (playlist.size > 1) {
+                // 有下一首（或列表回绕）：推进到下一首，失败歌曲保留在列表
+                val nextIndex = (currentIdx + 1).coerceIn(0, playlist.size - 1)
+                currentIndex = nextIndex
+                currentSong = playlist[nextIndex]
+                _currentIndexFlow.value = nextIndex
+                transitionHistory(currentSong!!)
+
+                player?.apply {
+                    // 先彻底断开错误状态：暂停 + stop 回到 IDLE，清掉对损坏文件的引用
+                    playWhenReady = false
+                    stop()
+                    // 显式 seek 到下一首并 prepare，但不 play()
+                    // （playWhenReady 仍为 false，等待用户/流程触发，避免再次误触损坏文件）
+                    seekTo(nextIndex, 0)
+                    prepare()
+                }
+                updateState()
             } else {
+                // 列表只剩这一首（单曲）：停止，但保留歌曲
                 serviceScope.launch { historyMutex.withLock { finalizeCurrentHistory() } }
+                player?.apply {
+                    playWhenReady = false
+                    stop()
+                }
                 currentSong = null
                 currentIndex = -1
                 _currentIndexFlow.value = -1
                 _playerState.value = PlayerData(null, PlaybackState.STOPPED, 0, 0)
             }
-            updateState()
+        } else {
+            serviceScope.launch { historyMutex.withLock { finalizeCurrentHistory() } }
+            player?.apply {
+                playWhenReady = false
+                stop()
+            }
+            currentSong = null
+            currentIndex = -1
+            _currentIndexFlow.value = -1
+            _playerState.value = PlayerData(null, PlaybackState.STOPPED, 0, 0)
+        }
+        updateState()
+    }
+
+    // ------------------- 兜底播放（系统 MediaPlayer）-------------------
+    // 用于播放损坏的 FLAC：华为 OMX.google.flac.decoder 容错差会崩溃，
+    // 改用系统 MediaPlayer（AOSP 软解）尽量出声。
+
+    /**
+     * 启动系统 MediaPlayer 兜底播放 [song]。
+     * 返回 true 表示兜底启动成功；false 表示兜底也失败，应回退到跳过逻辑。
+     */
+    private fun startFallbackPlayback(song: Song): Boolean {
+        return try {
+            // 先暂停 ExoPlayer，避免它反复触发 onPlayerError
+            player?.playWhenReady = false
+            releaseFallbackPlayer()
+
+            val mp = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_MEDIA)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                        .build()
+                )
+                setDataSource(song.path)
+                setOnPreparedListener { p ->
+                    p.start()
+                    _playerState.value = _playerState.value.copy(
+                        state = PlaybackState.PLAYING,
+                        duration = p.duration.toLong().takeIf { it > 0 } ?: song.duration
+                    )
+                    startFallbackProgressUpdates()
+                }
+                setOnCompletionListener {
+                    Log.i(TAG, "Fallback MediaPlayer completed: \"${song.title}\"")
+                    releaseFallbackPlayer()
+                    playNextAfterFallback()
+                }
+                setOnErrorListener { _, what, extra ->
+                    Log.e(TAG, "Fallback MediaPlayer error what=$what extra=$extra: \"${song.title}\"")
+                    releaseFallbackPlayer()
+                    // 兜底也失败：跳过这首损坏的歌，切下一首
+                    skipCurrentAndPlayNext()
+                    true
+                }
+                prepareAsync()
+            }
+            fallbackPlayer = mp
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "startFallbackPlayback failed: ${e.message}", e)
+            releaseFallbackPlayer()
+            false
         }
     }
+
+    // 兜底进度轮询：用 MediaPlayer 的 currentPosition 驱动进度条
+    private fun startFallbackProgressUpdates() {
+        fallbackProgressJob?.cancel()
+        fallbackProgressJob = serviceScope.launch {
+            while (isActive) {
+                val mp = fallbackPlayer ?: break
+                if (mp.isPlaying) {
+                    val position = mp.currentPosition.toLong().coerceAtLeast(0)
+                    val duration = mp.duration.toLong().takeIf { it > 0 }
+                        ?: (currentSong?.duration ?: 0)
+                    _playerState.value = _playerState.value.copy(
+                        progress = position,
+                        duration = duration
+                    )
+                    lastKnownPosition = position
+                }
+                delay(100)
+            }
+        }
+    }
+
+    // 兜底播放结束后切下一首（复用正常切歌逻辑）
+    private fun playNextAfterFallback() {
+        val currentIdx = currentIndex
+        if (currentIdx >= 0 && currentIdx < playlist.size - 1) {
+            playAtIndex(currentIdx + 1)
+        } else if (playMode == PlayMode.LIST_LOOP && playlist.isNotEmpty()) {
+            playAtIndex(0)
+        } else {
+            // 列表末尾或单曲：停止
+            stopPlayback()
+        }
+    }
+
+    private fun releaseFallbackPlayer() {
+        fallbackProgressJob?.cancel()
+        fallbackProgressJob = null
+        fallbackPlayer?.apply {
+            try {
+                if (isPlaying) stop()
+            } catch (_: Exception) {}
+            try {
+                reset()
+            } catch (_: Exception) {}
+            try {
+                release()
+            } catch (_: Exception) {}
+        }
+        fallbackPlayer = null
+    }
+
+    private fun isFallbackActive(): Boolean = fallbackPlayer != null
 
     // ------------------- 生命周期 -------------------
     @UnstableApi
@@ -404,7 +642,12 @@ class MusicService : MediaSessionService() {
         initWakeLock()
 
         // 初始化 ExoPlayer（配置扩展 Extractors 以支持更多格式，启用定比特率 MP3 搜索）
-        player = ExoPlayer.Builder(this)
+        // 启用解码器回退：华为 OMX.google.flac.decoder 对部分 FLAC 会在解码中崩溃
+        // （MediaCodecDecoderException / dequeueInputBuffer IllegalStateException），
+        // 开启后 MediaCodec 失败会自动回退到软解（FFmpeg 扩展不可用时的内置兜底）。
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setEnableDecoderFallback(true)
+        player = ExoPlayer.Builder(this, renderersFactory)
             .setMediaSourceFactory(
                 DefaultMediaSourceFactory(this, DefaultExtractorsFactory()
                     .setConstantBitrateSeekingEnabled(true))
@@ -460,6 +703,7 @@ class MusicService : MediaSessionService() {
         }
         progressUpdateJob?.cancel()
         saveJob?.cancel()
+        releaseFallbackPlayer()
         try { unregisterReceiver(noisyReceiver) } catch (_: Exception) {}
         player?.release()
         mediaSession.release()
@@ -663,6 +907,9 @@ class MusicService : MediaSessionService() {
         val safeIndex = index.coerceIn(0, playlist.size - 1)
         val song = playlist[safeIndex]
         if (handleSameSongPlayback(song)) return
+
+        // 切歌时释放兜底播放器，恢复 ExoPlayer 正常流程
+        releaseFallbackPlayer()
 
         transitionHistory(song)
         Log.d(TAG, "playAtIndex: seeking to $safeIndex and playing")
@@ -882,6 +1129,7 @@ class MusicService : MediaSessionService() {
 
     fun stopPlayback() {
         serviceScope.launch { historyMutex.withLock { finalizeCurrentHistory() } }
+        releaseFallbackPlayer()
         player?.stop()
         player?.clearMediaItems()
         currentSong = null
@@ -914,7 +1162,10 @@ class MusicService : MediaSessionService() {
 
     fun removeSongPermanently(index: Int) {
         if (index !in playlist.indices) return
-        
+
+        // 清理转码缓存文件
+        AudioTranscoder.deleteCachedTranscode(this, playlist[index].path)
+
         // 从 ExoPlayer 中移除对应媒体项
         player?.removeMediaItem(index)
         
@@ -956,10 +1207,17 @@ class MusicService : MediaSessionService() {
     }
 
     private fun buildMediaItem(song: Song): MediaItem {
-        val uri = if (song.path.startsWith("content://")) {
-            Uri.parse(song.path).also { ensurePersistableReadPermission(it) }
+        // 优先使用转码缓存（损坏 FLAC 已转码为 M4A），避免再次触发华为解码器崩溃
+        val effectivePath = if (song.path.endsWith(".flac", ignoreCase = true)) {
+            SettingsPreferences.getTranscodedPath(this, song.path)
+                ?.takeIf { File(it).exists() } ?: song.path
         } else {
-            Uri.fromFile(File(song.path))
+            song.path
+        }
+        val uri = if (effectivePath.startsWith("content://")) {
+            Uri.parse(effectivePath).also { ensurePersistableReadPermission(it) }
+        } else {
+            Uri.fromFile(File(effectivePath))
         }
         val metadata = MediaMetadata.Builder()
             .setTitle(song.title)
