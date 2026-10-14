@@ -79,6 +79,9 @@
     <!-- Current song highlight -->
     <color name="current_song_bg">#1AC26B4A</color>
 
+    <!-- 侧边栏菜单项选中块（浅色主题）：极淡暖灰陶土，克制不突兀（比 primaryContainer 更淡更灰） -->
+    <color name="nav_item_selected_bg">#14C26B4A</color>
+
     <!-- Dropdown border (light: 25% black) -->
     <color name="dropdown_border">#40000000</color>
 

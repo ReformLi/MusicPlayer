@@ -1,60 +1,65 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 侧边栏 Header：自定义图片背景（centerCrop 不变形）+ 左对齐排版 + 淡遮罩保证文字可读 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="200dp"
-    android:fitsSystemWindows="true"
-    android:background="@drawable/nav_header_bg"
-    android:gravity="bottom"
-    android:orientation="vertical"
-    android:padding="24dp">
+    android:layout_height="200dp">
 
-    <!-- App icon with modern card design -->
+    <!-- 背景图片：centerCrop 等比裁剪，不变形不收窄 -->
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:src="@drawable/nav_header_bg"
+        android:scaleType="centerCrop"
+        android:contentDescription="@null" />
+
+    <!-- 淡遮罩：保证白色文字在图片上可读（25% 黑，最克制） -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#40000000" />
+
+    <!-- 前景内容：左对齐，gravity=bottom 贴底，paddingBottom 留足避免副标题被裁剪 -->
     <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="match_parent"
+        android:gravity="bottom"
         android:orientation="vertical"
-        android:layout_marginStart="15dp"
-        android:layout_marginBottom="12dp"> <!-- 向上挤一些，负边距有效 -->
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:paddingTop="16dp"
+        android:paddingBottom="16dp">
 
+        <!-- App 图标 -->
         <com.google.android.material.imageview.ShapeableImageView
-            android:layout_marginTop="15dp"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
+            android:layout_width="56dp"
+            android:layout_height="56dp"
             android:scaleType="centerCrop"
             android:src="@mipmap/ic_launcher_round"
-            app:cardCornerRadius="16dp"
-            app:shapeAppearanceOverlay="@style/ShapeAppearance.Material3.Corner.Large"
+            app:shapeAppearanceOverlay="@style/ShapeAppearance.HpuMusicPlayer.Medium"
             android:contentDescription="@string/app_name" />
 
-        <!-- App name with modern typography -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="10dp"
-            android:text="@string/app_name"
-            android:textColor="?attr/colorOnPrimary"
-            android:textSize="18sp"
-            android:textStyle="bold" />
-
-        <!-- Subtitle -->
+        <!-- App 名称 -->
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="12dp"
+            android:text="@string/app_name"
+            android:textColor="@android:color/white"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:letterSpacing="0.02" />
+
+        <!-- 副标题 -->
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
             android:text="本地好歌，就在耳边"
-            android:textColor="?attr/colorOnPrimary"
+            android:textColor="@android:color/white"
             android:textSize="12sp"
-            android:alpha="0.8" />
+            android:alpha="0.85" />
+
     </LinearLayout>
 
-
-    <!-- Decorative element -->
-    <View
-        android:layout_width="130dp"
-        android:layout_height="3dp"
-        android:layout_marginTop="12dp"
-        android:background="?attr/colorOnPrimary"
-        android:alpha="0.6" />
-
-</LinearLayout>
+</FrameLayout>

@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 侧边栏菜单项图标/文字颜色：选中态主色（暖陶土），默认次要文字色 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:state_checked="true" android:color="?attr/colorPrimary" />
+    <item android:color="?attr/colorOnSurfaceVariant" />
+</selector>

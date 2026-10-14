@@ -167,6 +167,12 @@
         <item name="android:textFontWeight" tools:targetApi="p">500</item>
     </style>
 
+    <!-- 侧边栏菜单项选中块圆角形状 -->
+    <style name="ShapeAppearance.HpuMusicPlayer.NavItem" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">24dp</item>
+    </style>
+
     <!-- Popup menu theme -->
     <style name="Theme.HpuMusicPlayer.PopupMenu" parent="ThemeOverlay.AppCompat.Dark">
         <item name="android:colorBackground">@color/surface_card</item>
