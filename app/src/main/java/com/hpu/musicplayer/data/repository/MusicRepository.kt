@@ -58,7 +58,12 @@ class MusicRepository private constructor(context: Context) {
     }
 
     suspend fun deleteMissingSongs(existingPaths: List<String>) = withContext(Dispatchers.IO) {
-        songDao.deleteMissingSongs(existingPaths)
+        // 空列表时 NOT IN () 会触发 SQLite 语法错误；语义上「设备上已无任何歌曲」应删除全部
+        if (existingPaths.isEmpty()) {
+            songDao.deleteAll()
+        } else {
+            songDao.deleteMissingSongs(existingPaths)
+        }
     }
 
     suspend fun savePlaybackState(state: PlaybackStateEntity) = withContext(Dispatchers.IO) {

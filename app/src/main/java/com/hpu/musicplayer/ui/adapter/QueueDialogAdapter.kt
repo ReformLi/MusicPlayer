@@ -50,8 +50,15 @@ class QueueDialogAdapter(
     override fun onBindViewHolder(holder: VH, position: Int) {
         val song = songs[position]
         holder.bind(song, position == currentIndex)
-        holder.binding.root.setOnClickListener { onItemClick(position) }
-        holder.binding.ivDelete.setOnClickListener { onDeleteClick(position) }
+        // 用 bindingAdapterPosition 而非闭包捕获的 position，避免拖拽排序后索引失效点错歌/删错歌
+        holder.binding.root.setOnClickListener {
+            val pos = holder.bindingAdapterPosition
+            if (pos != RecyclerView.NO_POSITION) onItemClick(pos)
+        }
+        holder.binding.ivDelete.setOnClickListener {
+            val pos = holder.bindingAdapterPosition
+            if (pos != RecyclerView.NO_POSITION) onDeleteClick(pos)
+        }
     }
 
     override fun getItemCount(): Int = songs.size

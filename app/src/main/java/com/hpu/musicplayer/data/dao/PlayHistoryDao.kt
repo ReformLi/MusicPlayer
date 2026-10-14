@@ -72,8 +72,8 @@ interface PlayHistoryDao {
      *  只清理 playedAt < threshold 的记录，保留较新的未结束记录供恢复续播 */
     @Query("""
         UPDATE play_history 
-        SET endTime = playedAt + COALESCE(thisDuration, duration * 0.1, 30000),
-            thisDuration = COALESCE(NULLIF(thisDuration, 0), duration * 0.1, 30000)
+        SET endTime = playedAt + COALESCE(NULLIF(thisDuration, 0), duration / 10, 30000),
+            thisDuration = COALESCE(NULLIF(thisDuration, 0), duration / 10, 30000)
         WHERE endTime IS NULL AND playedAt < :threshold
     """)
     suspend fun finalizeOrphans(threshold: Long)

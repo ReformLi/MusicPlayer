@@ -50,7 +50,7 @@ class MusicLibraryFragment : Fragment() {
         binding.recyclerViewSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerViewSongs.adapter = adapter
 
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             playerViewModel.allSongs.collect { songs ->
                 allSongs = songs
                 // 根据 currentQuery 决定显示全部还是过滤

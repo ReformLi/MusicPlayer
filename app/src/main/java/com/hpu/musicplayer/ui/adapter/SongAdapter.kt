@@ -65,6 +65,10 @@ class SongAdapter(
 
         // 更多按钮点击弹出菜单
         holder.binding.btnMore.setOnClickListener { view ->
+            // 点击时立即捕获当前歌曲引用，避免菜单异步点击时 bindingAdapterPosition 失效（-1 越界）
+            val currentPos = holder.bindingAdapterPosition
+            if (currentPos == RecyclerView.NO_POSITION) return@setOnClickListener
+            val song = getItem(currentPos)
             val wrappedCtx = ContextThemeWrapper(view.context, R.style.Theme_HpuMusicPlayer_PopupMenu)
             val popup = PopupMenu(wrappedCtx, view)
             popup.menuInflater.inflate(R.menu.menu_song_item, popup.menu)
@@ -81,19 +85,19 @@ class SongAdapter(
             popup.setOnMenuItemClickListener { menuItem ->
                 when (menuItem.itemId) {
                     R.id.action_add_to_queue -> {
-                        onAddToQueueClick(getItem(holder.bindingAdapterPosition))
+                        onAddToQueueClick(song)
                         true
                     }
                     R.id.action_delete -> {
-                        onDeleteClick(getItem(holder.bindingAdapterPosition))
+                        onDeleteClick(song)
                         true
                     }
                     R.id.action_info -> {
-                        onInfoClick(getItem(holder.bindingAdapterPosition))
+                        onInfoClick(song)
                         true
                     }
                     R.id.action_favorite -> {
-                        onFavoriteClick(getItem(holder.bindingAdapterPosition))
+                        onFavoriteClick(song)
                         true
                     }
                     else -> false

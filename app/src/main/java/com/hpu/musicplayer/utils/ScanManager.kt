@@ -1,5 +1,6 @@
 package com.hpu.musicplayer.utils
 
+import android.content.ContentUris
 import android.content.Context
 import android.media.MediaMetadataRetriever
 import android.media.MediaScannerConnection
@@ -44,20 +45,27 @@ object ScanManager {
         } else {
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         }
+        // 投影：Q+ 优先用 RELATIVE_PATH + DISPLAY_NAME 拼路径（DATA 列在 Scoped Storage 下常为 null 导致漏扫），
+        // DATA 作为旧版本/兼容兜底
         val projection = arrayOf(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
             MediaStore.Audio.Media.ARTIST,
             MediaStore.Audio.Media.ALBUM,
             MediaStore.Audio.Media.DURATION,
+            MediaStore.Audio.Media.RELATIVE_PATH,
+            MediaStore.Audio.Media.DISPLAY_NAME,
             MediaStore.Audio.Media.DATA
         )
         val sortOrder = "${MediaStore.Audio.Media.TITLE} ASC"
 
         context.contentResolver.query(uri, projection, null, null, sortOrder)?.use { cursor ->
-            val dataCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+            val idCol = cursor.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+            val relPathCol = cursor.getColumnIndex(MediaStore.Audio.Media.RELATIVE_PATH)
+            val nameCol = cursor.getColumnIndex(MediaStore.Audio.Media.DISPLAY_NAME)
+            val dataCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
             while (cursor.moveToNext()) {
-                val path = cursor.getString(dataCol) ?: continue
+                val path = resolveMediaPath(cursor, idCol, relPathCol, nameCol, dataCol, uri) ?: continue
                 if (!File(path).exists()) continue
                 songs.add(extractSongFromPath(context, path))
                 onProgress?.invoke(songs.size)
@@ -65,6 +73,41 @@ object ScanManager {
         }
         Log.d(TAG, "Full scan found ${songs.size} songs")
         songs
+    }
+
+    /**
+     * 解析 MediaStore 行的真实文件路径。
+     * 优先级：DATA → RELATIVE_PATH+DISPLAY_NAME 拼接 → content URI（兜底，播放器支持 content://）。
+     * Android 10+ 的 Scoped Storage 下 DATA 常为 null，需用 RELATIVE_PATH 拼接避免漏扫。
+     */
+    private fun resolveMediaPath(
+        cursor: android.database.Cursor,
+        idCol: Int,
+        relPathCol: Int,
+        nameCol: Int,
+        dataCol: Int,
+        contentUri: Uri
+    ): String? {
+        // 1. DATA 列（旧版本 / 兼容路径最可靠）
+        if (dataCol >= 0) {
+            val data = cursor.getString(dataCol)
+            if (!data.isNullOrEmpty()) return data
+        }
+        // 2. Q+ 用 RELATIVE_PATH + DISPLAY_NAME 拼接（RELATIVE_PATH 形如 "Music/"）
+        if (relPathCol >= 0 && nameCol >= 0) {
+            val relPath = cursor.getString(relPathCol)
+            val name = cursor.getString(nameCol)
+            if (!relPath.isNullOrEmpty() && !name.isNullOrEmpty()) {
+                val base = Environment.getExternalStorageDirectory().absolutePath
+                val candidate = if (relPath.endsWith("/")) "$base/$relPath$name" else "$base/$relPath/$name"
+                if (File(candidate).exists()) return candidate
+            }
+        }
+        // 3. 兜底：构造 content URI（无法得到真实路径时，播放器/扫描已支持 content://）
+        if (idCol >= 0) {
+            return ContentUris.withAppendedId(contentUri, cursor.getLong(idCol)).toString()
+        }
+        return null
     }
 
     private suspend fun scanAndWait(context: Context, path: String) {
@@ -100,10 +143,22 @@ object ScanManager {
 
     // ---------- 增量扫描（保护自定义字段） ----------
     suspend fun scanIncremental(context: Context, folderUris: List<Uri>? = null) = withContext(Dispatchers.IO) {
+        // 无存储权限时直接中止，避免 query 返回空导致 mergeAndSave 清空整个库
+        if (folderUris == null && !Permissions.hasStoragePermission(context)) {
+            Log.w(TAG, "No storage permission, skip incremental scan to avoid wiping library")
+            return@withContext
+        }
+
         // 1. 执行扫描，获取当前设备上的所有目标歌曲
         val newSongs = if (folderUris == null) scanAll(context) else scanFolders(context, folderUris)
 
-        // 2. 执行增量合并写入数据库
+        // 2. 扫描结果为空（权限被拒/扫描失败/文件被清空但未授权）时，不执行删除，防止误清空库
+        if (newSongs.isEmpty()) {
+            Log.w(TAG, "Incremental scan returned empty, skip merge to avoid wiping library")
+            return@withContext
+        }
+
+        // 3. 执行增量合并写入数据库
         mergeAndSave(context, newSongs)
     }
 
@@ -226,6 +281,7 @@ object ScanManager {
         parentDir: DocumentFile?,
         result: MutableList<Song>
     ) {
+        val retriever = MediaMetadataRetriever()
         try {
             var fileSize = 0L
             context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -235,10 +291,15 @@ object ScanManager {
                 }
             }
 
-            val retriever = MediaMetadataRetriever()
-            val afd = context.contentResolver.openAssetFileDescriptor(uri, "r") ?: return
-            retriever.setDataSource(afd.fileDescriptor)
-            afd.close()
+            val afd = context.contentResolver.openAssetFileDescriptor(uri, "r")
+            if (afd == null) {
+                Log.w(TAG, "openAssetFileDescriptor returned null for $uri")
+                return
+            }
+            // use 确保 afd 在 setDataSource 抛异常时也能 close
+            afd.use {
+                retriever.setDataSource(it.fileDescriptor)
+            }
 
             // ---------- 封面 ----------
             var coverPath: String? = null
@@ -306,9 +367,11 @@ object ScanManager {
                     addedDate = System.currentTimeMillis()
                 )
             )
-            retriever.release()
         } catch (e: Exception) {
             Log.e(TAG, "Error scanning $uri: ${e.message}")
+        } finally {
+            // 无论成功/异常/提前 return，都释放 retriever，避免泄漏
+            try { retriever.release() } catch (_: Exception) {}
         }
     }
 

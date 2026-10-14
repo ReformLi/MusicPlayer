@@ -204,20 +204,18 @@ class PlayerFragment : Fragment() {
             binding.tvCurrentTime.text = formatTime(safeProgress)
             binding.tvTotalTime.text = formatTime(safeDuration)
 
-            // 封面
-            val coverPath = song.customCoverPath ?: song.coverPath
-            if (!coverPath.isNullOrEmpty()) {
-                binding.ivAlbumArt.load(File(coverPath)) {
-                    placeholder(R.drawable.ic_music_note)
-                    error(R.drawable.ic_music_note)
-                }
-            } else {
-                binding.ivAlbumArt.setImageResource(R.drawable.ic_music_note)
-            }
-
-            // 歌曲切换时加载歌词
+            // 封面 + 歌词：仅在歌曲切换时加载一次，避免每 100ms 进度更新重复触发 Coil 加载
             if (song.id != lastSongId) {
                 lastSongId = song.id
+                val coverPath = song.customCoverPath ?: song.coverPath
+                if (!coverPath.isNullOrEmpty()) {
+                    binding.ivAlbumArt.load(File(coverPath)) {
+                        placeholder(R.drawable.ic_music_note)
+                        error(R.drawable.ic_music_note)
+                    }
+                } else {
+                    binding.ivAlbumArt.setImageResource(R.drawable.ic_music_note)
+                }
                 loadLyrics(song)
                 Log.d("PlayerFragment", "歌词行数: ${lrcLines.size}, path: ${song.lrcPath}")
 //                Toast.makeText(requireContext(), "歌词行数1: ${lyricAdapter.itemCount}", Toast.LENGTH_SHORT).show()

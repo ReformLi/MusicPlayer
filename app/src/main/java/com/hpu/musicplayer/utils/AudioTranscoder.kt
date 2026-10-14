@@ -176,8 +176,8 @@ object AudioTranscoder {
                         encBuf.clear()
                         val pending = pendingPcm
                         if (pending != null && pending.remaining() > 0) {
-                            // 每帧字节数：1024 samples × 2ch × 16bit = 4096 字节
-                            val bytesPerFrame = 2 * channelCount * 2
+                            // 每帧字节数：samplesPerFrame(1024) × channelCount × 2字节(16bit) = 4096 字节
+                            val bytesPerFrame = (samplesPerFrame * channelCount * 2).toInt()
                             // 取 min(pending 剩余, encBuf 容量) 的字节数，并对齐到帧边界
                             var chunkSize = minOf(pending.remaining(), encBuf.remaining())
                             chunkSize = (chunkSize / bytesPerFrame) * bytesPerFrame
