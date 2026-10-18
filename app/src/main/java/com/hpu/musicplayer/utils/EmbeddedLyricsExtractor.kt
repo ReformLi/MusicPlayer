@@ -4,6 +4,7 @@ import android.util.Log
 import java.io.File
 import java.io.FileInputStream
 import java.nio.charset.Charset
+import java.util.Locale
 
 object EmbeddedLyricsExtractor {
 
@@ -81,6 +82,13 @@ object EmbeddedLyricsExtractor {
         val timestampFormat = data[offset++].toInt() and 0xFF
         val contentType = data[offset++].toInt() and 0xFF
 
+        // ID3v2 SYLT: timestampFormat=2 表示时间戳单位是 MPEG 帧数而非毫秒，
+        // 直接按毫秒解析会生成完全错乱的时间轴，宁可放弃也不产出错误歌词
+        if (timestampFormat == 2) {
+            Log.w(TAG, "SYLT with MPEG-frame timestamps unsupported, skip")
+            return null
+        }
+
         val charset: Charset = when (encoding) {
             0 -> Charsets.ISO_8859_1
             1, 2 -> Charsets.UTF_16
@@ -118,7 +126,8 @@ object EmbeddedLyricsExtractor {
             val minutes = ts / 60000
             val seconds = (ts % 60000) / 1000
             val hundredths = (ts % 1000) / 10
-            sb.append(String.format("[%02d:%02d.%02d]%s\n", minutes, seconds, hundredths, text))
+            // Locale.US：避免部分 locale 下 %02d 输出本地化数字导致 LrcParser 无法识别
+            sb.append(String.format(Locale.US, "[%02d:%02d.%02d]%s\n", minutes, seconds, hundredths, text))
         }
         return sb.toString()
     }
@@ -211,21 +220,26 @@ object EmbeddedLyricsExtractor {
     private fun extractFromM4a(data: ByteArray): String? {
         try {
             // MP4 中 "©lyr" 使用 Mac Roman 编码，© = 0xA9
+            // 注意：Byte.toInt() 有符号扩展，0xA9 字节会变成 -87，必须 and 0xFF 再比较
             var idx = 4
             while (idx <= data.size - 8) {
-                if (data[idx - 4].toInt() == 0xA9 &&
-                    data[idx - 3].toInt() == 0x6C && data[idx - 2].toInt() == 0x79 && data[idx - 1].toInt() == 0x72
+                if ((data[idx - 4].toInt() and 0xFF) == 0xA9 &&
+                    (data[idx - 3].toInt() and 0xFF) == 0x6C &&
+                    (data[idx - 2].toInt() and 0xFF) == 0x79 &&
+                    (data[idx - 1].toInt() and 0xFF) == 0x72
                 ) {
+                    // idx 从 4 起步，若 "©lyr" 出现在文件最开头（idx-8 < 0），atom 头不存在，跳过
+                    if (idx < 8) { idx++; continue }
                     val atomSize = bigEndianInt(data, idx - 8)
                     if (atomSize > 12 && idx - 8 + atomSize <= data.size) {
                         var contentStart = idx + 4  // skip past "©lyr"
                         val contentEnd = idx - 8 + atomSize
                         // 检查是否有 data 子 atom
                         if (contentStart + 8 <= contentEnd &&
-                            data[contentStart + 4].toInt() == 0x64 &&
-                            data[contentStart + 5].toInt() == 0x61 &&
-                            data[contentStart + 6].toInt() == 0x74 &&
-                            data[contentStart + 7].toInt() == 0x61
+                            (data[contentStart + 4].toInt() and 0xFF) == 0x64 &&
+                            (data[contentStart + 5].toInt() and 0xFF) == 0x61 &&
+                            (data[contentStart + 6].toInt() and 0xFF) == 0x74 &&
+                            (data[contentStart + 7].toInt() and 0xFF) == 0x61
                         ) {
                             val dataAtomSize = bigEndianInt(data, contentStart)
                             contentStart += 16  // data header(8) + type(4) + locale(4)

@@ -25,12 +25,16 @@ import com.hpu.musicplayer.service.PlayMode
 import com.hpu.musicplayer.ui.activity.AboutActivity
 import com.hpu.musicplayer.ui.activity.HelpActivity
 import com.hpu.musicplayer.ui.dialog.CacheManagementDialogFragment
+import com.hpu.musicplayer.utils.AudioTranscoder
 import com.hpu.musicplayer.utils.CoverMigration
 import com.hpu.musicplayer.utils.SettingsPreferences
 import com.hpu.musicplayer.utils.ThemeChangeManager
 import com.hpu.musicplayer.utils.ThemeHelper
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class SettingsFragment : Fragment() {
 
@@ -246,8 +250,9 @@ class SettingsFragment : Fragment() {
 
     private fun resetLibrary() {
         lifecycleScope.launch {
-            // 1. 停止当前播放（通过 ViewModel 发送自定义命令）
+            // 1. 停止播放并清空服务内存播放列表（否则服务仍持有已删除歌曲的引用）
             playerViewModel.stopPlayback()
+            playerViewModel.clearPlaylist()
 
             // 2. 删除数据库内容
             val db = AppDatabase.getDatabase(requireContext())
@@ -256,9 +261,17 @@ class SettingsFragment : Fragment() {
             db.playbackStateDao().saveState(
                 PlaybackStateEntity(currentSongId = -1, position = 0, playMode = PlayMode.LIST_LOOP.name)
             )
-            CoverMigration.clearAllCovers(requireContext())
 
-            // 3. 重新启动服务（组件操作，直接调用）
+            // 3. 清理封面：自定义封面（covers，随库清空已悬空）+ 扫描封面缓存（album_art）
+            CoverMigration.clearAllCovers(requireContext())
+            withContext(Dispatchers.IO) {
+                File(requireContext().filesDir, "album_art").listFiles()?.forEach { it.delete() }
+            }
+
+            // 4. 清理转码缓存（FLAC→M4A；源文件可能已被移走，逐条映射删除不可靠，直接清目录+映射表）
+            AudioTranscoder.clearAllCache(requireContext())
+
+            // 5. 重新启动服务（组件操作，直接调用）
             val intent = Intent(requireContext(), MusicService::class.java)
             requireContext().startService(intent)
 

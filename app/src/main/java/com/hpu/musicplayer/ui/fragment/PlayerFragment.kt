@@ -153,7 +153,7 @@ class PlayerFragment : Fragment() {
             playerViewModel.timerRemaining.collect { remaining ->
                 if (remaining > 0) {
                     val seconds = remaining / 1000
-                    binding.tvTimer.text = "⏳ ${seconds / 60}:${String.format("%02d", seconds % 60)}"
+                    binding.tvTimer.text = "⏳ ${seconds / 60}:${String.format(java.util.Locale.US, "%02d", seconds % 60)}"
                     binding.tvTimer.visibility = View.VISIBLE
                 } else {
                     binding.tvTimer.visibility = View.GONE
@@ -559,7 +559,7 @@ class PlayerFragment : Fragment() {
     private fun formatTime(millis: Long): String {
         val minutes = TimeUnit.MILLISECONDS.toMinutes(millis)
         val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
-        return String.format("%02d:%02d", minutes, seconds)
+        return String.format(java.util.Locale.US, "%02d:%02d", minutes, seconds)
     }
 
     /**

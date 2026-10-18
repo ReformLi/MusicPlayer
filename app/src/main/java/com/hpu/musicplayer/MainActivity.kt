@@ -28,6 +28,7 @@ import com.hpu.musicplayer.databinding.ActivityMainBinding
 import com.hpu.musicplayer.service.MusicService
 import com.hpu.musicplayer.service.PlayMode
 import com.hpu.musicplayer.service.PlaybackState
+import com.hpu.musicplayer.service.PlayerData
 import com.hpu.musicplayer.utils.Permissions
 import com.hpu.musicplayer.utils.SettingsPreferences
 import com.hpu.musicplayer.utils.ThemeHelper
@@ -44,6 +45,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var playerViewModel: PlayerViewModel
     private var miniDiscRotator: ObjectAnimator? = null
+    // 初始化只执行一次：标记权限就绪后的初始化状态，
+    // 覆盖「拒绝权限 → 去系统设置开启 → 返回 App」路径（onResume 补初始化）
+    private var isInitialized = false
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -162,77 +166,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             playerViewModel.playerState.collect { data ->
                 if (navController.currentDestination?.id != R.id.songsFragment) return@collect
-
-                if (data.currentSong != null) {
-                    binding.miniPlayer.root.visibility = View.VISIBLE
-                    binding.miniPlayer.miniTitle.text = data.currentSong?.title ?: "未知歌曲"
-                    binding.miniPlayer.miniArtist.text = data.currentSong?.artist ?: "未知艺术家"
-
-                    // 加载封面图片
-                    val coverPath = data.currentSong?.coverPath
-                    if (!coverPath.isNullOrEmpty()) {
-                        binding.miniPlayer.miniCover.load(File(coverPath)) {
-                            placeholder(R.drawable.ic_music_note)
-                            error(R.drawable.ic_music_note)
-                        }
-                    } else {
-                        binding.miniPlayer.miniCover.setImageResource(R.drawable.ic_music_note)
-                    }
-
-                    binding.miniPlayer.miniPlayPause.setImageResource(
-                        if (data.state == PlaybackState.PLAYING) R.drawable.ic_pause
-                        else R.drawable.ic_play
-                    )
-
-                    // 迷你播放器光盘：播放时显示并旋转，暂停时隐藏
-                    if (data.state == PlaybackState.PLAYING) {
-                        if (binding.miniPlayer.ivMiniDisc.visibility != View.VISIBLE) {
-                            binding.miniPlayer.ivMiniDisc.visibility = View.VISIBLE
-                            binding.miniPlayer.ivMiniDisc.alpha = 0f
-                            binding.miniPlayer.ivMiniDisc.animate().alpha(0.85f).setDuration(300).start()
-                            // 封面往左平移，露出右侧光碟（1/5）
-                            binding.miniPlayer.miniCover.animate()
-                                .translationX(-5f)
-                                .setDuration(300)
-                                .start()
-                            // 启动旋转
-                            miniDiscRotator = ObjectAnimator.ofFloat(
-                                binding.miniPlayer.ivMiniDisc, "rotation", 0f, 360f
-                            ).apply {
-                                duration = 8000
-                                repeatCount = ObjectAnimator.INFINITE
-                                interpolator = LinearInterpolator()
-                                start()
-                            }
-                        }
-                    } else {
-                        if (binding.miniPlayer.ivMiniDisc.visibility == View.VISIBLE) {
-                            miniDiscRotator?.cancel()
-                            miniDiscRotator = null
-                            binding.miniPlayer.miniCover.animate()
-                                .translationX(0f)
-                                .setDuration(300)
-                                .start()
-                            binding.miniPlayer.ivMiniDisc.animate().alpha(0f).setDuration(300).withEndAction {
-                                binding.miniPlayer.ivMiniDisc.visibility = View.GONE
-                                binding.miniPlayer.ivMiniDisc.rotation = 0f
-                            }.start()
-                        }
-                    }
-
-                    // 更新迷你播放器顶部进度线
-                    val progressView = binding.miniPlayer.miniProgressBar
-                    val params = progressView.layoutParams
-                    if (data.duration > 0) {
-                        val ratio = data.progress.toFloat() / data.duration.toFloat()
-                        params.width = (binding.miniPlayer.root.width * ratio).toInt()
-                    } else {
-                        params.width = 0
-                    }
-                    progressView.layoutParams = params
-                } else {
-                    binding.miniPlayer.root.visibility = View.GONE
-                }
+                updateMiniPlayer(data)
             }
         }
 
@@ -262,14 +196,18 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun refreshMiniPlayer() {
-        val data = playerViewModel.playerState.value
+    /**
+     * mini player 完整状态刷新（collect 与返回主页时共用）。
+     * 之前 refreshMiniPlayer 只更新文字/封面/按钮，光盘旋转与进度线不刷新，
+     * 导致从播放页返回主页后动画/进度状态陈旧。
+     */
+    private fun updateMiniPlayer(data: PlayerData) {
         if (data.currentSong != null) {
             binding.miniPlayer.root.visibility = View.VISIBLE
             binding.miniPlayer.miniTitle.text = data.currentSong?.title ?: "未知歌曲"
             binding.miniPlayer.miniArtist.text = data.currentSong?.artist ?: "未知艺术家"
 
-            // 加载封面图片（与上面相同）
+            // 加载封面图片
             val coverPath = data.currentSong?.coverPath
             if (!coverPath.isNullOrEmpty()) {
                 binding.miniPlayer.miniCover.load(File(coverPath)) {
@@ -284,9 +222,60 @@ class MainActivity : AppCompatActivity() {
                 if (data.state == PlaybackState.PLAYING) R.drawable.ic_pause
                 else R.drawable.ic_play
             )
+
+            // 迷你播放器光盘：播放时显示并旋转，暂停时隐藏
+            if (data.state == PlaybackState.PLAYING) {
+                if (binding.miniPlayer.ivMiniDisc.visibility != View.VISIBLE) {
+                    binding.miniPlayer.ivMiniDisc.visibility = View.VISIBLE
+                    binding.miniPlayer.ivMiniDisc.alpha = 0f
+                    binding.miniPlayer.ivMiniDisc.animate().alpha(0.85f).setDuration(300).start()
+                    // 封面往左平移，露出右侧光碟（1/5）
+                    binding.miniPlayer.miniCover.animate()
+                        .translationX(-5f)
+                        .setDuration(300)
+                        .start()
+                    // 启动旋转
+                    miniDiscRotator = ObjectAnimator.ofFloat(
+                        binding.miniPlayer.ivMiniDisc, "rotation", 0f, 360f
+                    ).apply {
+                        duration = 8000
+                        repeatCount = ObjectAnimator.INFINITE
+                        interpolator = LinearInterpolator()
+                        start()
+                    }
+                }
+            } else {
+                if (binding.miniPlayer.ivMiniDisc.visibility == View.VISIBLE) {
+                    miniDiscRotator?.cancel()
+                    miniDiscRotator = null
+                    binding.miniPlayer.miniCover.animate()
+                        .translationX(0f)
+                        .setDuration(300)
+                        .start()
+                    binding.miniPlayer.ivMiniDisc.animate().alpha(0f).setDuration(300).withEndAction {
+                        binding.miniPlayer.ivMiniDisc.visibility = View.GONE
+                        binding.miniPlayer.ivMiniDisc.rotation = 0f
+                    }.start()
+                }
+            }
+
+            // 更新迷你播放器顶部进度线
+            val progressView = binding.miniPlayer.miniProgressBar
+            val params = progressView.layoutParams
+            if (data.duration > 0) {
+                val ratio = data.progress.toFloat() / data.duration.toFloat()
+                params.width = (binding.miniPlayer.root.width * ratio).toInt()
+            } else {
+                params.width = 0
+            }
+            progressView.layoutParams = params
         } else {
             binding.miniPlayer.root.visibility = View.GONE
         }
+    }
+
+    private fun refreshMiniPlayer() {
+        updateMiniPlayer(playerViewModel.playerState.value)
     }
 
     private fun checkPermissions() {
@@ -297,16 +286,21 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // 在 onResume 中检查权限是否被撤销
+    // 在 onResume 中处理权限状态变化
     override fun onResume() {
         super.onResume()
         if (!Permissions.hasStoragePermission(this)) {
             // 权限已被撤销，通知用户
             showPermissionDeniedMessage()
+        } else if (!isInitialized) {
+            // 之前拒绝过权限、用户后来去系统设置开启并返回：
+            // onCreate 时未初始化，此处补上（否则空列表直到重启 App）
+            initializeApp()
         }
     }
 
     private fun initializeApp() {
+        isInitialized = true
         lifecycleScope.launch {
             try {
                 MusicRepository.getInstance(this@MainActivity)
@@ -344,11 +338,23 @@ class MainActivity : AppCompatActivity() {
 
         MusicService.isRestoringState = true
 
-        if (savedState.currentSongId != -1L) {
-            val song = repository.getSongById(savedState.currentSongId)
-            if (song != null) {
-                playerViewModel.restoreSong(song, savedState.position)
+        try {
+            if (savedState.currentSongId != -1L) {
+                val song = repository.getSongById(savedState.currentSongId)
+                if (song != null) {
+                    playerViewModel.restoreSong(song, savedState.position)
+                } else {
+                    // 歌曲已被删除等：恢复不会触发 STATE_READY，必须重置标志，
+                    // 否则 isRestoringState 永真 → SongsFragment 永久跳过 setPlaylist
+                    MusicService.isRestoringState = false
+                }
+            } else {
+                // 无可恢复歌曲，同样不会触发 STATE_READY
+                MusicService.isRestoringState = false
             }
+        } catch (e: Exception) {
+            // 恢复过程异常同样要重置，避免标志残留
+            MusicService.isRestoringState = false
         }
     }
 

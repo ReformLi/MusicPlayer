@@ -19,7 +19,9 @@ import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.databinding.FragmentSongDetailBinding
 import com.hpu.musicplayer.utils.CoverMigration
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -104,37 +106,77 @@ class SongDetailFragment : Fragment() {
 
     private fun saveCustomCover(uri: Uri) {
         val song = currentSong ?: return
-        val destFile = CoverMigration.getCoverFile(requireContext(), song.id)
-        try {
-            requireContext().contentResolver.openInputStream(uri)?.use { input ->
-                destFile.outputStream().use { output -> input.copyTo(output) }
-            }
-            song.customCoverPath?.let { oldPath ->
-                val oldFile = File(oldPath)
-                if (oldFile.exists() && oldFile.absolutePath != destFile.absolutePath) {
-                    oldFile.delete()
+        val context = requireContext()
+        lifecycleScope.launch {
+            // SAF 读流 + 文件复制移到 IO 线程（回调在主线程，大图会卡 UI）
+            val savedPath = withContext(Dispatchers.IO) {
+                try {
+                    val destFile = CoverMigration.getCoverFile(context, song.id)
+                    // 临时文件 + 原子重命名：中途失败不留半成品（与 CoverMigration 一致）
+                    val tmpFile = File(destFile.parentFile, destFile.name + ".tmp")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        tmpFile.outputStream().use { output -> input.copyTo(output) }
+                    } ?: return@withContext null
+                    if (!tmpFile.renameTo(destFile)) {
+                        tmpFile.copyTo(destFile, overwrite = true)
+                        tmpFile.delete()
+                    }
+                    // 删除旧自定义封面，避免残留
+                    song.customCoverPath?.let { oldPath ->
+                        val oldFile = File(oldPath)
+                        if (oldFile.exists() && oldFile.absolutePath != destFile.absolutePath) {
+                            oldFile.delete()
+                        }
+                    }
+                    song.customCoverPath = destFile.absolutePath
+                    destFile.absolutePath
+                } catch (e: Exception) {
+                    null
                 }
             }
-            song.customCoverPath = destFile.absolutePath
-            playerViewModel.updateSong(song)
-            binding.ivDetailCover.load(destFile)
-        } catch (e: Exception) {
-            Toast.makeText(requireContext(), "保存封面失败", Toast.LENGTH_SHORT).show()
+            if (savedPath != null) {
+                playerViewModel.updateSong(song)
+                if (_binding != null) {
+                    binding.ivDetailCover.load(File(savedPath))
+                    binding.tvCoverPath.text = "封面: $savedPath"
+                }
+            } else {
+                Toast.makeText(context, "保存封面失败", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
     private fun saveCustomLrc(uri: Uri) {
         val song = currentSong ?: return
-        val destFile = File(requireContext().filesDir, "custom_lrcs/${songId}.lrc")
-        destFile.parentFile?.mkdirs()
-        requireContext().contentResolver.openInputStream(uri)?.use { input ->
-            destFile.outputStream().use { output ->
-                input.copyTo(output)
+        val context = requireContext()
+        lifecycleScope.launch {
+            val savedPath = withContext(Dispatchers.IO) {
+                try {
+                    val destFile = File(context.filesDir, "custom_lrcs/${songId}.lrc")
+                    destFile.parentFile?.mkdirs()
+                    val tmpFile = File(destFile.parentFile, destFile.name + ".tmp")
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        tmpFile.outputStream().use { output -> input.copyTo(output) }
+                    } ?: return@withContext null
+                    if (!tmpFile.renameTo(destFile)) {
+                        tmpFile.copyTo(destFile, overwrite = true)
+                        tmpFile.delete()
+                    }
+                    song.customLrcPath = destFile.absolutePath
+                    destFile.absolutePath
+                } catch (e: Exception) {
+                    null
+                }
+            }
+            if (savedPath != null) {
+                playerViewModel.updateSong(song)
+                if (_binding != null) {
+                    binding.tvLrcPath.text = "歌词: $savedPath"
+                }
+            } else {
+                Toast.makeText(context, "保存歌词失败", Toast.LENGTH_SHORT).show()
             }
         }
-        song.customLrcPath = destFile.absolutePath
-        binding.tvLrcPath.text = "歌词: ${destFile.absolutePath}"
-        playerViewModel.updateSong(song)
     }
 
     private fun updateCoverPreview(path: String) {
@@ -162,14 +204,14 @@ class SongDetailFragment : Fragment() {
     private fun formatDuration(millis: Long): String {
         val minutes = java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(millis)
         val seconds = java.util.concurrent.TimeUnit.MILLISECONDS.toSeconds(millis) % 60
-        return String.format("%d:%02d", minutes, seconds)
+        return String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
 
     private fun formatFileSize(bytes: Long): String {
         return when {
             bytes < 1024 -> "$bytes B"
-            bytes < 1024 * 1024 -> String.format("%.1f KB", bytes / 1024.0)
-            else -> String.format("%.1f MB", bytes / (1024.0 * 1024.0))
+            bytes < 1024 * 1024 -> String.format(Locale.US, "%.1f KB", bytes / 1024.0)
+            else -> String.format(Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
         }
     }
 

@@ -61,17 +61,16 @@ class SongInfoDialogFragment : DialogFragment() {
         if (!isViewCreated) return
 
         history?.let { playHistory ->
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
             binding.tvTitle.text = playHistory.title
             binding.tvArtist.text = playHistory.artist
             binding.tvAlbum.text = playHistory.album
             binding.tvDuration.text = "总长 " + formatDuration(playHistory.duration)
-            binding.tvPlayTime.text = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                .format(Date(playHistory.playedAt))
+            binding.tvPlayTime.text = sdf.format(Date(playHistory.playedAt))
 
             // 结束时间
             if (playHistory.endTime != null) {
-                binding.tvEndTime.text = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
-                    .format(Date(playHistory.endTime))
+                binding.tvEndTime.text = sdf.format(Date(playHistory.endTime))
                 binding.layoutEndTime.visibility = View.VISIBLE
             } else {
                 binding.layoutEndTime.visibility = View.GONE
@@ -90,7 +89,7 @@ class SongInfoDialogFragment : DialogFragment() {
     private fun formatDuration(duration: Long): String {
         val minutes = duration / 60000
         val seconds = (duration % 60000) / 1000
-        return String.format("%02d:%02d", minutes, seconds)
+        return String.format(Locale.US, "%02d:%02d", minutes, seconds)
     }
 
     fun setHistory(history: PlayHistory) {

@@ -61,6 +61,8 @@ class HistoryFragment : Fragment() {
 
     // 历史 Flow 收集任务，切换时间范围时取消前一个
     private var historyJob: Job? = null
+    // 排行榜 Flow 收集任务，切换排序时取消前一个
+    private var rankJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?,
@@ -174,7 +176,9 @@ class HistoryFragment : Fragment() {
         }
 
         historyJob?.cancel()
-        historyJob = lifecycleScope.launch {
+        // 必须用 viewLifecycleOwner：fragment 级 lifecycleScope 在 view 销毁后仍会 collect，
+        // 播放新歌触发 Room emit → applyFilter → binding!! NPE 崩溃
+        historyJob = viewLifecycleOwner.lifecycleScope.launch {
             flow.collect { list ->
                 allHistory = list
                 applyFilter()
@@ -286,7 +290,9 @@ class HistoryFragment : Fragment() {
             repository.getRankByCount(since)
         }
 
-        lifecycleScope.launch {
+        // 取消上一次的 collect，否则多次切换排序会有多个 Flow 竞争 submitList，列表来回跳变
+        rankJob?.cancel()
+        rankJob = viewLifecycleOwner.lifecycleScope.launch {
             flow.collect { list ->
                 adapter.submitList(list)
             }

@@ -25,7 +25,6 @@ class PlayQueueDialogFragment : DialogFragment() {
     private val binding get() = _binding!!
     private val playerViewModel: PlayerViewModel by viewModels({ requireActivity() })
     private lateinit var adapter: QueueDialogAdapter
-    private var currentPlaylistSize = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,7 +55,8 @@ class PlayQueueDialogFragment : DialogFragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             playerViewModel.playlist.collect { list ->
                 adapter.submitList(list)
-                currentPlaylistSize = list.size
+                // 数量随列表实时更新（submitList 是异步 diff，读 itemCount 会拿到旧值）
+                updateSongCount(list.size)
             }
         }
         // 观察当前索引
@@ -84,13 +84,8 @@ class PlayQueueDialogFragment : DialogFragment() {
                 }
                 binding.ivPlayMode.setImageResource(iconRes)
                 binding.tvPlayModeName.text = modeName
-                // 单曲循环不显示数量
-                if (mode == PlayMode.SINGLE_LOOP) {
-                    binding.tvSongCount.visibility = View.GONE
-                } else {
-                    binding.tvSongCount.visibility = View.VISIBLE
-                    binding.tvSongCount.text = "(${adapter.itemCount}首)"
-                }
+                // 模式切换可能改变数量可见性，同步刷新
+                updateSongCount(playerViewModel.playlist.value.size)
             }
         }
 
@@ -161,12 +156,29 @@ class PlayQueueDialogFragment : DialogFragment() {
         binding.root.setOnClickListener { dismiss() }   // 点击顶部空白区关闭
     }
 
+    /** 更新队列数量显示（单曲循环模式下隐藏） */
+    private fun updateSongCount(size: Int) {
+        if (_binding == null) return
+        if (playerViewModel.playMode.value == PlayMode.SINGLE_LOOP) {
+            binding.tvSongCount.visibility = View.GONE
+        } else {
+            binding.tvSongCount.visibility = View.VISIBLE
+            binding.tvSongCount.text = "(${size}首)"
+        }
+    }
+
     private fun confirmDeleteSong(index: Int) {
+        // TOCTOU 防护：确认弹窗期间列表可能被其他入口修改（通知栏操作、其他页面等），
+        // 先解析出 song id，确认时刻按 id 重新定位，避免 index 漂移删错歌
+        val songId = playerViewModel.playlist.value.getOrNull(index)?.id ?: return
         AlertDialog.Builder(requireContext())
             .setTitle("删除歌曲")
             .setMessage("确定要从播放队列中删除这首歌曲吗？")
             .setPositiveButton("确定") { _, _ ->
-                playerViewModel.removeSongByIndex(index)
+                val currentIndex = playerViewModel.playlist.value.indexOfFirst { it.id == songId }
+                if (currentIndex >= 0) {
+                    playerViewModel.removeSongByIndex(currentIndex)
+                }
             }
             .setNegativeButton("取消", null)
             .show()

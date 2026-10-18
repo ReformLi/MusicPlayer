@@ -67,6 +67,14 @@ object SettingsPreferences {
         getPrefs(context).edit().remove(transcodeKey(sourcePath)).apply()
     }
 
+    /** 清空全部转码缓存映射（重置歌曲库时调用，配合删除缓存目录） */
+    fun clearAllTranscodedPaths(context: Context) {
+        val prefs = getPrefs(context)
+        val keys = prefs.all.keys.filter { it.startsWith("$KEY_TRANSCODE_MAP:") }
+        if (keys.isEmpty()) return
+        prefs.edit().apply { keys.forEach(::remove) }.apply()
+    }
+
     private fun transcodeKey(sourcePath: String): String =
         "$KEY_TRANSCODE_MAP:$sourcePath"
 }

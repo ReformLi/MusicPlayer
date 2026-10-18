@@ -18,6 +18,11 @@ class HistoryAdapter(
     private val onItemClick: (PlayHistory) -> Unit
 ) : ListAdapter<PlayHistory, HistoryAdapter.ViewHolder>(DiffCallback()) {
 
+    companion object {
+        // SimpleDateFormat 创建开销较大，滚动时每次 bind 都 new 会产生大量短命对象，提升为单例
+        private val DATE_FORMAT = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+    }
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemHistorySongBinding.inflate(
             LayoutInflater.from(parent.context), parent, false
@@ -41,12 +46,11 @@ class HistoryAdapter(
         }
 
         // 时间显示
-        val sdf = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
-        val startTime = sdf.format(Date(history.playedAt))
+        val startTime = DATE_FORMAT.format(Date(history.playedAt))
 
         if (history.endTime != null) {
             // 已结束：显示时间范围
-            val endTime = sdf.format(Date(history.endTime))
+            val endTime = DATE_FORMAT.format(Date(history.endTime))
             holder.binding.tvPlayTime.text = "$startTime ~ $endTime"
 
             // 显示收听时长
@@ -81,9 +85,9 @@ class HistoryAdapter(
         val minutes = (totalSeconds % 3600) / 60
         val seconds = totalSeconds % 60
         return if (hours > 0) {
-            String.format("%d:%02d:%02d", hours, minutes, seconds)
+            String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
         } else {
-            String.format("%02d:%02d", minutes, seconds)
+            String.format(Locale.US, "%02d:%02d", minutes, seconds)
         }
     }
 

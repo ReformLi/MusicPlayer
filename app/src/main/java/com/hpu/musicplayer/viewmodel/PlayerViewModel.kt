@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionToken
+import com.google.common.util.concurrent.ListenableFuture
 import com.google.common.util.concurrent.MoreExecutors
 import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.data.repository.MusicRepository
@@ -43,6 +44,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     // ---------- MediaController 连接 ----------
     private var mediaController: MediaController? = null
+    // 连接 future：onCleared 时取消，防止 ViewModel 销毁后回调仍注入新 controller 造成泄漏
+    private var controllerFuture: ListenableFuture<MediaController>? = null
+    @Volatile
+    private var isCleared = false
 
     // 统一的操作队列：存放 lambda，连接成功后按序执行
     private val pendingActions = mutableListOf<() -> Unit>()
@@ -64,11 +69,17 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
         val context = getApplication<Application>()
         val sessionToken = SessionToken(context, ComponentName(context, MusicService::class.java))
-        val controllerFuture = MediaController.Builder(context, sessionToken).buildAsync()
+        val future = MediaController.Builder(context, sessionToken).buildAsync()
+        controllerFuture = future
 
-        controllerFuture.addListener({
+        future.addListener({
             try {
-                mediaController = controllerFuture.get()
+                if (isCleared) {
+                    // ViewModel 已销毁：直接释放刚连上的 controller，防止泄漏
+                    try { future.get().release() } catch (_: Exception) {}
+                    return@addListener
+                }
+                mediaController = future.get()
                 Log.d("PlayerViewModel", "Connected to MusicService")
                 executePendingActions()
             } catch (e: Exception) {
@@ -89,8 +100,11 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     // 将操作加入队列并尝试连接
     private fun enqueueAction(action: () -> Unit) {
         if (pendingActions.size >= maxPendingActions) {
-            Log.w("PlayerViewModel", "PendingActions queue full, dropping oldest")
-            pendingActions.removeAt(0)
+            // 队列满：丢弃"最新"操作而非最旧的——已有序列按用户操作顺序排列，
+            // 丢中间某个会让后续操作基于错误状态执行（如丢 play 留 pause）。
+            // 连接通常几百 ms 内完成，正常使用不会触达此上限。
+            Log.w("PlayerViewModel", "PendingActions queue full, dropping newest action")
+            return
         }
         pendingActions.add(action)
         connectToService()
@@ -249,23 +263,6 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         sendCustomCommandInternal("STOP_PLAYBACK")
     }
 
-    // 这两个通知操作如果不再使用可以删除
-    fun updateNotification() {
-        if (mediaController == null) {
-            enqueueAction { updateNotification() }
-            return
-        }
-        sendCustomCommandInternal("UPDATE_NOTIFICATION")
-    }
-
-    fun hideNotification() {
-        if (mediaController == null) {
-            enqueueAction { hideNotification() }
-            return
-        }
-        sendCustomCommandInternal("HIDE_NOTIFICATION")
-    }
-
     fun removeSongByIndex(index: Int) {
         if (mediaController == null) {
             enqueueAction { removeSongByIndex(index) }
@@ -371,6 +368,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
 
     override fun onCleared() {
         cancelTimer()
+        isCleared = true
+        // 取消进行中的连接：防止销毁后 listener 回调注入新 controller（已被 release 的引用之外再泄漏一个）
+        try { controllerFuture?.cancel(false) } catch (_: Exception) {}
+        controllerFuture = null
         mediaController?.release()
         mediaController = null
         pendingActions.clear()

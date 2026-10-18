@@ -31,7 +31,15 @@ object CoverMigration {
         if (destFile.exists()) return@withContext  // 已迁移
 
         try {
-            sourceFile.copyTo(destFile, overwrite = true)
+            // 先写临时文件再原子重命名：拷贝中途被杀/磁盘满只会留下 .tmp 残留，
+            // 不会产生"存在但不完整"的目标文件卡死后续迁移（exists 即完整）
+            val tmpFile = File(destFile.parentFile, destFile.name + ".tmp")
+            sourceFile.copyTo(tmpFile, overwrite = true)
+            if (!tmpFile.renameTo(destFile)) {
+                // 极少数文件系统 rename 失败：退回直接拷贝并清理 tmp
+                tmpFile.copyTo(destFile, overwrite = true)
+                tmpFile.delete()
+            }
 //            Log.d(TAG, "Migrated cover for song ${song.id}: $destFile")
 
             // 更新数据库字段

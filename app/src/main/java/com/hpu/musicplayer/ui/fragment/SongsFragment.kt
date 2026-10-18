@@ -142,6 +142,9 @@ class SongsFragment : Fragment() {
                 // 冷启动定位到当前播放歌曲（需列表已就绪）
                 maybeScrollToCurrentSong()
 
+                // 空态提示在任何路径（含 isRestoringState 早退前）都要更新
+                binding.emptyView.visibility = if (displayList.isEmpty()) View.VISIBLE else View.GONE
+
                 if (ignoreNextPlaylistUpdate) {
                     ignoreNextPlaylistUpdate = false
                     // 已经通过 removeSongByIndex 更新了 Service，这里跳过 setPlaylist
@@ -150,15 +153,18 @@ class SongsFragment : Fragment() {
                     // 正常更新（增、改等）
                     // 冷启动恢复期间跳过 setPlaylist，避免覆盖 restoreSong 的状态
                     if (MusicService.isRestoringState) return@collect
-                    // 播放列表也按展示顺序设置
-                    // 用 ID 列表比较，避免引用不同但内容相同时重复设置
-                    val currentServiceIds = MusicService.playlistFlow.value.map { it.id }
-                    val newPlaylistIds = displayList.map { it.id }
-                    if (newPlaylistIds != currentServiceIds) {
-                        playerViewModel.setPlaylist(displayList)
+                    // 搜索过滤是纯显示行为：过滤子集不能作为播放列表，
+                    // 否则正在播放的歌曲若不匹配搜索词会被立即停止；仅无搜索时同步完整列表
+                    if (currentQuery.isEmpty()) {
+                        // 播放列表也按展示顺序设置
+                        // 用 ID 列表比较，避免引用不同但内容相同时重复设置
+                        val currentServiceIds = MusicService.playlistFlow.value.map { it.id }
+                        val newPlaylistIds = displayList.map { it.id }
+                        if (newPlaylistIds != currentServiceIds) {
+                            playerViewModel.setPlaylist(displayList)
+                        }
                     }
                 }
-                binding.emptyView.visibility = if (displayList.isEmpty()) View.VISIBLE else View.GONE
             }
         }
 
@@ -334,7 +340,7 @@ class SongsFragment : Fragment() {
     private fun formatDuration(millis: Long): String {
         val minutes = TimeUnit.MILLISECONDS.toMinutes(millis)
         val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
-        return String.format("%02d:%02d", minutes, seconds)
+        return String.format(java.util.Locale.US, "%02d:%02d", minutes, seconds)
     }
 
     override fun onDestroyView() {

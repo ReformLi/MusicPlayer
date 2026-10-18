@@ -124,6 +124,7 @@ class MusicService : MediaSessionService() {
 
     // WakeLock - 防止 CPU 休眠中断播放
     private var wakeLock: PowerManager.WakeLock? = null
+    private var lastWakeLockRenewalAt = 0L
 
     // 服务级协程作用域（替代每次新建 CoroutineScope）
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -162,6 +163,10 @@ class MusicService : MediaSessionService() {
     // 否则 ExoPlayer 反复解码同一个损坏文件会形成「兜底失败 → play() 重试 → 再崩」的死循环，
     // 表现为：卡在同一首歌、上一首/下一首/停止按钮全部失效。
     private var errorHandlingInProgress = false
+
+    // 音频焦点暂时丢失（来电等）前是否在播放，GAIN 时据此恢复播放
+    @Volatile
+    private var resumeOnFocusGain = false
 
     private val historyMutex = Mutex()
     private var sessionListenTimeMs: Long = 0L
@@ -372,6 +377,15 @@ class MusicService : MediaSessionService() {
             val errSong = currentSong
             Log.e(TAG, "Play error for \"${errSong?.title}\" (${errSong?.path}): ${error.message}", error)
 
+            // 恢复的歌曲直接报错（如损坏文件）：STATE_READY 永不触发，
+            // 残留的 isRestoringState/pendingSeek 会永久阻断 setPlaylist 并在下一次 STATE_READY 误 seek
+            if (isRestoringState || pendingSeekIndex != -1) {
+                Log.w(TAG, "Clearing restore flags on player error (was restoring=$isRestoringState)")
+                isRestoringState = false
+                pendingSeekIndex = -1
+                pendingSeekPosition = 0
+            }
+
             // 错误处理重入保护：处理期间直接丢弃重复的 error 回调，
             // 阻断「play() 重试 → 再崩 → 再兜底」的死循环。
             if (errorHandlingInProgress) {
@@ -476,8 +490,8 @@ class MusicService : MediaSessionService() {
         val currentIdx = currentIndex
         if (currentIdx >= 0 && currentIdx < playlist.size) {
             if (playlist.size > 1) {
-                // 有下一首（或列表回绕）：推进到下一首，失败歌曲保留在列表
-                val nextIndex = (currentIdx + 1).coerceIn(0, playlist.size - 1)
+                // 推进到下一首（取模回绕：最后一首失败时回到第一首，而不是 coerceIn 卡在同一首）
+                val nextIndex = (currentIdx + 1) % playlist.size
                 currentIndex = nextIndex
                 currentSong = playlist[nextIndex]
                 _currentIndexFlow.value = nextIndex
@@ -543,6 +557,10 @@ class MusicService : MediaSessionService() {
                 setDataSource(song.path)
                 setOnPreparedListener { p ->
                     p.start()
+                    // 兜底播放时 ExoPlayer 处于 pause，onIsPlayingChanged 不会触发，
+                    // 焦点/WakeLock 需在此显式获取
+                    acquireAudioFocusIfNeeded()
+                    acquireWakeLock()
                     _playerState.value = _playerState.value.copy(
                         state = PlaybackState.PLAYING,
                         duration = p.duration.toLong().takeIf { it > 0 } ?: song.duration
@@ -579,6 +597,7 @@ class MusicService : MediaSessionService() {
             while (isActive) {
                 val mp = fallbackPlayer ?: break
                 if (mp.isPlaying) {
+                    renewWakeLockIfNeeded()
                     val position = mp.currentPosition.toLong().coerceAtLeast(0)
                     val duration = mp.duration.toLong().takeIf { it > 0 }
                         ?: (currentSong?.duration ?: 0)
@@ -586,6 +605,11 @@ class MusicService : MediaSessionService() {
                         progress = position,
                         duration = duration
                     )
+                    // 与正常进度协程相同的口径累计收听时长，避免兜底期间历史时长丢失
+                    val diff = position - lastKnownPosition
+                    if (diff in 1..5000) {
+                        sessionListenTimeMs += diff
+                    }
                     lastKnownPosition = position
                 }
                 delay(100)
@@ -593,16 +617,35 @@ class MusicService : MediaSessionService() {
         }
     }
 
-    // 兜底播放结束后切下一首（复用正常切歌逻辑）
+    // 兜底播放结束后切下一首（复用正常切歌逻辑，并处理播放模式语义）
     private fun playNextAfterFallback() {
         val currentIdx = currentIndex
-        if (currentIdx >= 0 && currentIdx < playlist.size - 1) {
-            playAtIndex(currentIdx + 1)
-        } else if (playMode == PlayMode.LIST_LOOP && playlist.isNotEmpty()) {
-            playAtIndex(0)
-        } else {
-            // 列表末尾或单曲：停止
-            stopPlayback()
+        when {
+            // 单曲循环：重播当前首（兜底播放走系统 MediaPlayer，不走 ExoPlayer 的 repeat 逻辑）
+            playMode == PlayMode.SINGLE_LOOP && currentIdx in playlist.indices -> {
+                playAtIndex(currentIdx)
+            }
+            // 随机：等概率随机选一首（尽量不选当前首）
+            playMode == PlayMode.RANDOM && playlist.isNotEmpty() -> {
+                if (playlist.size == 1) {
+                    playAtIndex(0)
+                } else {
+                    var next = (0 until playlist.size).random()
+                    if (next == currentIdx) next = (next + 1) % playlist.size
+                    playAtIndex(next)
+                }
+            }
+            // 顺序推进，列表末尾按 LIST_LOOP 回绕
+            currentIdx >= 0 && currentIdx < playlist.size - 1 -> {
+                playAtIndex(currentIdx + 1)
+            }
+            playMode == PlayMode.LIST_LOOP && playlist.isNotEmpty() -> {
+                playAtIndex(0)
+            }
+            else -> {
+                // 列表末尾或单曲：停止
+                stopPlayback()
+            }
         }
     }
 
@@ -621,6 +664,9 @@ class MusicService : MediaSessionService() {
             } catch (_: Exception) {}
         }
         fallbackPlayer = null
+        // 兜底期间显式获取的 WakeLock 在此释放（isHeld 检查保证幂等；
+        // 若紧接着 ExoPlayer 开始播放，onIsPlayingChanged 会重新获取）
+        releaseWakeLock()
     }
 
     private fun isFallbackActive(): Boolean = fallbackPlayer != null
@@ -688,7 +734,9 @@ class MusicService : MediaSessionService() {
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = mediaSession
 
     override fun onTaskRemoved(rootIntent: Intent?) {
-        if (player?.isPlaying != true) {
+        // 兜底播放时 ExoPlayer 处于 pause（isPlaying=false），但 fallbackPlayer 正在出声，
+        // 必须同时检查，否则用户划掉任务会误杀正在兜底播放的服务
+        if (player?.isPlaying != true && !isFallbackActive()) {
             stopSelf()
         }
     }
@@ -705,8 +753,9 @@ class MusicService : MediaSessionService() {
         saveJob?.cancel()
         releaseFallbackPlayer()
         try { unregisterReceiver(noisyReceiver) } catch (_: Exception) {}
-        player?.release()
+        // media3 推荐顺序：先释放 MediaSession（解除对 player 的引用），再释放 player
         mediaSession.release()
+        player?.release()
         releaseAudioFocus()
         releaseWakeLock()
         serviceScope.cancel()
@@ -735,6 +784,7 @@ class MusicService : MediaSessionService() {
         progressUpdateJob = serviceScope.launch {
             while (isActive) {
                 if (player?.isPlaying == true) {
+                    renewWakeLockIfNeeded()
                     val playerDuration = player?.duration?.takeIf { it > 0 }
                     val duration = playerDuration ?: (currentSong?.duration ?: 0)
                     val position = player?.currentPosition?.coerceAtLeast(0) ?: _playerState.value.progress
@@ -964,65 +1014,63 @@ class MusicService : MediaSessionService() {
 
     fun restoreSong(song: Song, position: Long) {
         val index = playlist.indexOfFirst { it.id == song.id }
-        if (index < 0) {
+        if (index >= 0) {
+            applyRestore(index, song, position)
+        } else {
             // 恢复时直接把完整库作为播放列表，避免"单曲播放列表"导致后续 play() 追加
             // 造成队列偏离，进而在播放中触发整表重排（冷启动首次返回列表卡顿的根因）
-            val library = runBlocking { repository.getAllSongsOnce() }
-            val libIndex = library.indexOfFirst { it.id == song.id }
-            if (libIndex >= 0) {
-                setPlaylist(library)
-                currentSong = song
-                currentIndex = libIndex
-                _currentIndexFlow.value = libIndex
-
-                pendingSeekIndex = libIndex
-                pendingSeekPosition = position
-
-                player?.apply {
-                    playWhenReady = false
-                    prepare()
+            // 查库移到 IO 线程：onCustomCommand 在主线程，runBlocking 全表查询有 ANR 风险
+            serviceScope.launch {
+                val library = repository.getAllSongsOnce()
+                val libIndex = library.indexOfFirst { it.id == song.id }
+                withContext(Dispatchers.Main) {
+                    if (libIndex >= 0) {
+                        setPlaylist(library)
+                        applyRestore(libIndex, song, position)
+                    } else {
+                        // 歌曲不在库中（已被删除等）：退回单曲恢复
+                        prepareSong(song, position)
+                    }
                 }
-
-                _playerState.value = PlayerData(
-                    currentSong = song,
-                    state = PlaybackState.PAUSED,
-                    progress = position,
-                    duration = song.duration
-                )
-            } else {
-                // 歌曲不在库中（已被删除等）：退回单曲恢复
-                prepareSong(song, position)
             }
-        } else {
-            currentSong = song
-            currentIndex = index
-            _currentIndexFlow.value = index
-
-            pendingSeekIndex = index
-            pendingSeekPosition = position
-
-            player?.apply {
-                playWhenReady = false
-                prepare()
-            }
-
-            _playerState.value = PlayerData(
-                currentSong = song,
-                state = PlaybackState.PAUSED,
-                progress = position,
-                duration = song.duration
-            )
+            return
         }
+    }
+
+    // restoreSong 的公共收尾：设置索引/状态/pendingSeek，并续接未结束的历史记录
+    private fun applyRestore(index: Int, song: Song, position: Long) {
+        currentSong = song
+        currentIndex = index
+        _currentIndexFlow.value = index
+
+        pendingSeekIndex = index
+        pendingSeekPosition = position
+
+        player?.apply {
+            playWhenReady = false
+            prepare()
+        }
+
+        _playerState.value = PlayerData(
+            currentSong = song,
+            state = PlaybackState.PAUSED,
+            progress = position,
+            duration = song.duration
+        )
         // 同步查找未结束记录续接，确保切歌前 currentHistoryId 已就位
-        runBlocking {
-            val existing = repository.getUnfinishedHistoryForSong(song.id)
-            if (existing != null) {
-                currentHistoryId = existing.id
-                sessionListenTimeMs = existing.thisDuration
-                lastKnownPosition = position
-                lastHistorySongId = song.id
-            } else {
-                transitionHistory(song)
+        serviceScope.launch {
+            val existing = withContext(Dispatchers.IO) {
+                repository.getUnfinishedHistoryForSong(song.id)
+            }
+            withContext(Dispatchers.Main) {
+                if (existing != null) {
+                    currentHistoryId = existing.id
+                    sessionListenTimeMs = existing.thisDuration
+                    lastKnownPosition = position
+                    lastHistorySongId = song.id
+                } else {
+                    transitionHistory(song)
+                }
             }
         }
     }
@@ -1151,6 +1199,10 @@ class MusicService : MediaSessionService() {
         val item = playlist.removeAt(fromIndex)
         playlist.add(toIndex, item)
         _playlistFlow.value = playlist.toList()
+
+        // 同步 ExoPlayer timeline，否则拖拽后 timeline 与 playlist 永久错位，
+        // 后续 removeMediaItem/addMediaItem/onMediaItemTransition 全部按错误索引工作
+        player?.moveMediaItem(fromIndex, toIndex)
 
         when {
             fromIndex == currentIndex -> currentIndex = toIndex
@@ -1340,7 +1392,9 @@ class MusicService : MediaSessionService() {
     // 保存当前播放状态到数据库，同时持久化收听时长
     private suspend fun saveCurrentState() {
         val song = currentSong ?: return
-        val progress = withContext(Dispatchers.Main) {
+        // 必须用 Main.immediate：onDestroy 的 runBlocking 在主线程阻塞时，
+        // Dispatchers.Main 会 post 到主 Looper（死锁/ANR）；immediate 在已处于主线程时内联执行
+        val progress = withContext(Dispatchers.Main.immediate) {
             player?.currentPosition ?: 0
         }
         if (progress != lastSavedProgress) {
@@ -1368,6 +1422,7 @@ class MusicService : MediaSessionService() {
     // ------------------- 音频焦点管理 -------------------
     private fun initAudioFocus() {
         audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        // 记录暂时失焦前是否在播放（含兜底播放），GAIN 时据此恢复
         val focusChangeListener = OnAudioFocusChangeListener { focusChange ->
             when (focusChange) {
                 AudioManager.AUDIOFOCUS_LOSS -> {
@@ -1375,23 +1430,37 @@ class MusicService : MediaSessionService() {
                     Log.d(TAG, "AudioFocus: LOSS")
                     hasAudioFocus = false
                     player?.pause()
+                    // 兜底 MediaPlayer 也要暂停，否则来电/其他应用播放时兜底仍出声
+                    try { fallbackPlayer?.pause() } catch (_: Exception) {}
                 }
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> {
-                    // 暂时失去焦点（如来电），暂停
+                    // 暂时失去焦点（如来电），暂停；记录之前是否在播放以便 GAIN 恢复
                     Log.d(TAG, "AudioFocus: LOSS_TRANSIENT")
                     hasAudioFocus = false
+                    resumeOnFocusGain = player?.isPlaying == true || isFallbackActive()
                     player?.pause()
+                    try { fallbackPlayer?.pause() } catch (_: Exception) {}
                 }
                 AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
                     // 短暂失去焦点但可以降音播放（如通知音），降低音量
                     Log.d(TAG, "AudioFocus: LOSS_TRANSIENT_CAN_DUCK")
                     player?.volume = 0.3f
+                    try { fallbackPlayer?.setVolume(0.3f, 0.3f) } catch (_: Exception) {}
                 }
                 AudioManager.AUDIOFOCUS_GAIN -> {
-                    // 重新获得焦点，恢复
+                    // 重新获得焦点，恢复音量；若此前因来电等被暂时暂停则恢复播放
                     Log.d(TAG, "AudioFocus: GAIN")
                     hasAudioFocus = true
                     player?.volume = 1.0f
+                    try { fallbackPlayer?.setVolume(1.0f, 1.0f) } catch (_: Exception) {}
+                    if (resumeOnFocusGain) {
+                        resumeOnFocusGain = false
+                        if (isFallbackActive()) {
+                            try { fallbackPlayer?.start() } catch (_: Exception) {}
+                        } else if (player?.playWhenReady == false) {
+                            player?.play()
+                        }
+                    }
                 }
             }
         }
@@ -1405,19 +1474,17 @@ class MusicService : MediaSessionService() {
                 .setAudioAttributes(audioAttributes)
                 .setOnAudioFocusChangeListener(focusChangeListener)
                 .build()
-            audioFocusRequest?.let {
-                audioManager?.requestAudioFocus(it)?.let { result ->
-                    hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
-                }
-            }
+            // 注意：此处只构建请求对象，不实际请求焦点——
+            // 服务创建不代表要播放（冷启动恢复 playWhenReady=false），
+            // 无条件抢焦点会打断用户正在使用的其他播放器；实际请求延迟到 acquireAudioFocusIfNeeded
         } else {
+            // minSdk=26（Android O），此分支为不可达的死代码，保留结构以防万一
             @Suppress("DEPRECATION")
-            val result = audioManager?.requestAudioFocus(
+            audioManager?.requestAudioFocus(
                 focusChangeListener,
                 AudioManager.STREAM_MUSIC,
                 AudioManager.AUDIOFOCUS_GAIN
             )
-            hasAudioFocus = (result == AudioManager.AUDIOFOCUS_REQUEST_GRANTED)
         }
     }
 
@@ -1430,9 +1497,10 @@ class MusicService : MediaSessionService() {
                 }
             }
         } else {
+            // minSdk=26（Android O），不可达；仅作结构兜底
             @Suppress("DEPRECATION")
             val result = audioManager?.requestAudioFocus(
-                { focusChange -> /* handled in init */ },
+                { _ -> },
                 AudioManager.STREAM_MUSIC,
                 AudioManager.AUDIOFOCUS_GAIN
             )
@@ -1463,9 +1531,19 @@ class MusicService : MediaSessionService() {
 
     private fun acquireWakeLock() {
         wakeLock?.let {
-            if (!it.isHeld) {
-                it.acquire(10 * 60 * 1000L) // 10分钟超时
-            }
+            // 非计数模式：重复 acquire 会重置超时计时（即"续期"），isHeld 状态下调用安全。
+            // 超时仅作为漏释放时的兜底保险，正常路径由 releaseWakeLock 显式释放。
+            it.acquire(10 * 60 * 1000L) // 10分钟超时
+        }
+        lastWakeLockRenewalAt = android.os.SystemClock.elapsedRealtime()
+    }
+
+    /** 播放中定期续期 WakeLock，防止连续播放超过超时后 CPU 休眠中断播放 */
+    private fun renewWakeLockIfNeeded() {
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastWakeLockRenewalAt >= 5 * 60 * 1000L) { // 每 5 分钟续一次
+            lastWakeLockRenewalAt = now
+            acquireWakeLock()
         }
     }
 

@@ -1,5 +1,7 @@
 package com.hpu.musicplayer.utils
 
+import java.util.concurrent.CopyOnWriteArrayList
+
 /**
  * 主题变化监听器接口
  * 允许组件注册监听主题变化事件
@@ -17,7 +19,9 @@ interface ThemeChangeListener {
  * 用于管理主题变化监听器的注册和通知
  */
 object ThemeChangeManager {
-    private val listeners = mutableListOf<ThemeChangeListener>()
+    // CopyOnWriteArrayList：notify 遍历中允许监听器回调里 register/unregister（否则 ConcurrentModificationException），
+    // 注册/注销本身也线程安全
+    private val listeners = CopyOnWriteArrayList<ThemeChangeListener>()
 
     /**
      * 注册主题变化监听器

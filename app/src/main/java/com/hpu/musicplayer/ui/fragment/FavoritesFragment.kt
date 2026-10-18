@@ -49,7 +49,8 @@ class FavoritesFragment : Fragment() {
             showMenu = true,
             showDeleteMenu = false,   // 不显示删除菜单
             onItemClick = { song ->
-                playerViewModel.play(song)
+                // 用 playOrResume：同一首歌处于暂停时恢复续播，而不是从头重播（与主页行为一致）
+                playerViewModel.playOrResume(song)
                 val bundle = Bundle().apply { putLong("songId", song.id) }
                 findNavController().navigate(R.id.playerFragment, bundle)
             },
@@ -62,7 +63,7 @@ class FavoritesFragment : Fragment() {
         binding.recyclerViewSongs.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerViewSongs.adapter = adapter
 
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             playerViewModel.favoriteSongs.collect { songs ->
                 allSongs = songs
                 // 根据 currentQuery 决定显示全部还是过滤
@@ -206,7 +207,7 @@ class FavoritesFragment : Fragment() {
     private fun formatDuration(millis: Long): String {
         val minutes = java.util.concurrent.TimeUnit.MILLISECONDS.toMinutes(millis)
         val seconds = java.util.concurrent.TimeUnit.MILLISECONDS.toSeconds(millis) % 60
-        return String.format("%d:%02d", minutes, seconds)
+        return String.format(java.util.Locale.US, "%d:%02d", minutes, seconds)
     }
 
     override fun onDestroyView() {

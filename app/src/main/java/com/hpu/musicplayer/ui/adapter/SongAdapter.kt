@@ -187,7 +187,7 @@ class SongAdapter(
     private fun formatDuration(millis: Long): String {
         val minutes = TimeUnit.MILLISECONDS.toMinutes(millis)
         val seconds = TimeUnit.MILLISECONDS.toSeconds(millis) % 60
-        return String.format("%d:%02d", minutes, seconds)
+        return String.format(java.util.Locale.US, "%d:%02d", minutes, seconds)
     }
 
     class DiffCallback : DiffUtil.ItemCallback<Song>() {

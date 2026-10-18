@@ -56,6 +56,18 @@ object AudioTranscoder {
     }
 
     /**
+     * 清空全部转码缓存（目录 + 映射表）。
+     * 「重置歌曲库」时调用：源 FLAC 可能已被用户移走/删除，逐条映射删除不可靠，
+     * 直接清目录 + 清映射表，避免死文件永久占空间。
+     */
+    fun clearAllCache(context: Context) {
+        try {
+            cacheDir(context).listFiles()?.forEach { it.delete() }
+        } catch (_: Exception) {}
+        SettingsPreferences.clearAllTranscodedPaths(context)
+    }
+
+    /**
      * 同步转码 FLAC → M4A（调用方应在 IO 线程执行）。
      *
      * @param sourcePath 源 FLAC 文件绝对路径
