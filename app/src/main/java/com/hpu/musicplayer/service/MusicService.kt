@@ -86,6 +86,9 @@ class MusicService : MediaSessionService() {
 
         const val ACTION_RESTORE_SONG = "RESTORE_SONG"
         const val ACTION_ADD_TO_QUEUE = "ADD_TO_QUEUE"
+        const val ACTION_START_TIMER = "START_TIMER"
+        const val ACTION_CANCEL_TIMER = "CANCEL_TIMER"
+        const val ACTION_UPDATE_SONG = "UPDATE_SONG"
 
         const val EXTRA_SONG = "song"
         const val EXTRA_POSITION = "position"
@@ -94,6 +97,7 @@ class MusicService : MediaSessionService() {
         const val EXTRA_SONG_ID = "songId"
         const val EXTRA_FROM = "from"
         const val EXTRA_TO = "to"
+        const val EXTRA_MINUTES = "minutes"
 
         // 状态流（全局可读）
         private val _playerState = MutableStateFlow(PlayerData(null, PlaybackState.STOPPED, 0, 0))
@@ -107,6 +111,11 @@ class MusicService : MediaSessionService() {
 
         private val _currentIndexFlow = MutableStateFlow(-1)
         val currentIndexFlow: StateFlow<Int> = _currentIndexFlow.asStateFlow()
+
+        // 睡眠定时剩余时间（Service 持有：ViewModel 销毁后定时器仍生效，
+        // 否则退出界面 onCleared 取消定时器，Service 却继续播放 → 通宵播放）
+        private val _timerRemainingFlow = MutableStateFlow(0L)
+        val timerRemainingFlow: StateFlow<Long> = _timerRemainingFlow.asStateFlow()
 
         // 冷启动恢复标志：恢复期间 onMediaItemTransition 不自动更新 currentSong
         var isRestoringState = false
@@ -175,6 +184,10 @@ class MusicService : MediaSessionService() {
     private var lastHistorySongId: Long = -1L
     private val minHistoryIntervalMs = 2000L
 
+    // 睡眠定时：定时器协程 + 到期标记。到期后不立即打断（README 语义：播完当前歌再停）
+    private var sleepTimerJob: Job? = null
+    private var stopAfterCurrent = false
+
     // ------------------- MediaSession 回调 -------------------
     private inner class MySessionCallback : MediaSession.Callback {
         @UnstableApi
@@ -196,6 +209,9 @@ class MusicService : MediaSessionService() {
                 .add(SessionCommand(ACTION_REMOVE_SONG_BY_ID, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_RESTORE_SONG, Bundle.EMPTY))
                 .add(SessionCommand(ACTION_ADD_TO_QUEUE, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_START_TIMER, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_CANCEL_TIMER, Bundle.EMPTY))
+                .add(SessionCommand(ACTION_UPDATE_SONG, Bundle.EMPTY))
                 .build()
 
             return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
@@ -297,6 +313,23 @@ class MusicService : MediaSessionService() {
                     if (songs != null) addToQueue(songs)
                     Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
                 }
+                ACTION_START_TIMER -> {
+                    val minutes = args.getInt(EXTRA_MINUTES, 0)
+                    startSleepTimer(minutes)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_CANCEL_TIMER -> {
+                    cancelSleepTimer()
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
+                ACTION_UPDATE_SONG -> {
+                    val song = if (Build.VERSION.SDK_INT >= 33)
+                        args.getParcelable(EXTRA_SONG, Song::class.java)
+                    else
+                        args.getParcelable<Song>(EXTRA_SONG)
+                    if (song != null) refreshSongInPlaylist(song)
+                    Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+                }
                 else -> super.onCustomCommand(session, controller, customCommand, args)
             }
         }
@@ -308,6 +341,11 @@ class MusicService : MediaSessionService() {
             if (isPlaying) {
                 acquireAudioFocusIfNeeded()
                 acquireWakeLock()
+                // 真正开始出声时才建史：避免冷启动恢复到 PAUSED 态就插入"播放中"记录，
+                // 退出后被 finalizeOrphans 伪造成 duration/10 的时长污染排行榜
+                if (currentSong != null && currentHistoryId == 0L) {
+                    transitionHistory(currentSong!!)
+                }
             } else {
                 releaseWakeLock()
             }
@@ -317,6 +355,20 @@ class MusicService : MediaSessionService() {
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
             // 冷启动恢复期间跳过，避免覆盖 restoreSong 设置的 currentSong
             if (isRestoringState) return
+            // 睡眠定时"播完当前歌再停"：自动切到下一首时拦截，停止而非继续。
+            // REPEAT 也必须拦截：单曲循环播完重播的 reason 是 REPEAT 而非 AUTO，
+            // 漏拦会让"播完再停"完全依赖 250ms 窗口轮询，元数据时长偏大时永不停播
+            if ((reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO ||
+                        reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT) && stopAfterCurrent) {
+                Log.i(TAG, "Sleep timer: stopping at end of current song (reason=$reason)")
+                stopAfterCurrent = false
+                cancelSleepTimer()
+                // 进度循环通常在末尾 250ms 内提前拦截；这里兜底防止 duration 未知时漏网
+                player?.pause()
+                // 收尾被停歌曲的历史：下方 playWhenReady 已为 false，不会走 transitionHistory，
+                // 否则旧歌记录悬挂，下次切歌时把新歌的收听时长写进旧歌记录污染排行榜
+                serviceScope.launch { historyMutex.withLock { finalizeCurrentHistory() } }
+            }
             val newIndex = player?.currentMediaItemIndex ?: -1
             Log.d(TAG, "onMediaItemTransition: newIndex=$newIndex, reason=$reason, repeatMode=${player?.repeatMode}, shuffle=${player?.shuffleModeEnabled}")
             if (newIndex != -1 && newIndex < playlist.size) {
@@ -342,20 +394,31 @@ class MusicService : MediaSessionService() {
                 if (!mp.isPlaying) {
                     try { mp.start() } catch (_: Exception) {}
                     _playerState.value = _playerState.value.copy(state = PlaybackState.PLAYING)
+                    // 兜底暂停时 WakeLock 已释放，恢复出声需重新持有
+                    acquireWakeLock()
                 }
             } else {
                 // 用户点击暂停：暂停 MediaPlayer
                 if (mp.isPlaying) {
                     try { mp.pause() } catch (_: Exception) {}
                     _playerState.value = _playerState.value.copy(state = PlaybackState.PAUSED)
+                    // 兜底路径不走 ExoPlayer 的 onIsPlayingChanged，需在此显式释放
+                    releaseWakeLock()
                 }
             }
         }
 
         override fun onPlaybackStateChanged(state: Int) {
             if (state == Player.STATE_READY && pendingSeekIndex != -1) {
-                player?.seekTo(pendingSeekIndex, pendingSeekPosition)
+                if (isRestoringState) {
+                    player?.seekTo(pendingSeekIndex, pendingSeekPosition)
+                } else {
+                    // 恢复标志已被用户操作清掉（play/stop 等路径走了 clearPendingRestore），
+                    // 这是恢复流程的残留 seek：执行会把用户拉回恢复目标，劫持操作
+                    Log.w(TAG, "Discarding stale pendingSeek index=$pendingSeekIndex (restore flag cleared)")
+                }
                 pendingSeekIndex = -1
+                pendingSeekPosition = 0
             }
             // 冷启动恢复完成：player 就绪后清除恢复标志，并同步播放列表
             if (state == Player.STATE_READY && isRestoringState) {
@@ -561,6 +624,10 @@ class MusicService : MediaSessionService() {
                     // 焦点/WakeLock 需在此显式获取
                     acquireAudioFocusIfNeeded()
                     acquireWakeLock()
+                    // 兜底出声也是真实播放：ExoPlayer 已崩溃进 IDLE，onIsPlayingChanged(true)
+                    // 永不触发，必须在此显式建史，否则整段兜底播放收听历史完全丢失。
+                    // transitionHistory 内部防重（同歌 + currentHistoryId>0 直接跳过）
+                    transitionHistory(song)
                     _playerState.value = _playerState.value.copy(
                         state = PlaybackState.PLAYING,
                         duration = p.duration.toLong().takeIf { it > 0 } ?: song.duration
@@ -570,7 +637,14 @@ class MusicService : MediaSessionService() {
                 setOnCompletionListener {
                     Log.i(TAG, "Fallback MediaPlayer completed: \"${song.title}\"")
                     releaseFallbackPlayer()
-                    playNextAfterFallback()
+                    if (stopAfterCurrent) {
+                        Log.i(TAG, "Sleep timer: stopping at fallback completion")
+                        stopAfterCurrent = false
+                        cancelSleepTimer()
+                        _playerState.value = _playerState.value.copy(state = PlaybackState.PAUSED)
+                    } else {
+                        playNextAfterFallback()
+                    }
                 }
                 setOnErrorListener { _, what, extra ->
                     Log.e(TAG, "Fallback MediaPlayer error what=$what extra=$extra: \"${song.title}\"")
@@ -611,6 +685,8 @@ class MusicService : MediaSessionService() {
                         sessionListenTimeMs += diff
                     }
                     lastKnownPosition = position
+                    // 睡眠定时到期后接近歌曲末尾时停止
+                    checkStopAfterCurrent(position, duration)
                 }
                 delay(100)
             }
@@ -751,6 +827,7 @@ class MusicService : MediaSessionService() {
         }
         progressUpdateJob?.cancel()
         saveJob?.cancel()
+        cancelSleepTimer()
         releaseFallbackPlayer()
         try { unregisterReceiver(noisyReceiver) } catch (_: Exception) {}
         // media3 推荐顺序：先释放 MediaSession（解除对 player 的引用），再释放 player
@@ -799,6 +876,8 @@ class MusicService : MediaSessionService() {
                         progress = position,
                         duration = duration
                     )
+                    // 睡眠定时到期后接近歌曲末尾时停止
+                    checkStopAfterCurrent(position, duration)
                 }
                 delay(100)
             }
@@ -806,7 +885,19 @@ class MusicService : MediaSessionService() {
     }
 
     // ------------------- 业务方法 -------------------
+    // 用户驱动的播放操作（play/playAtIndex/stop/删除）需清掉恢复期残留，
+    // 否则 pendingSeek 会在下一次 STATE_READY 把播放拉回恢复目标，劫持用户操作
+    private fun clearPendingRestore() {
+        if (pendingSeekIndex != -1 || isRestoringState) {
+            Log.d(TAG, "clearPendingRestore: was restoring=$isRestoringState, pendingSeek=$pendingSeekIndex")
+        }
+        pendingSeekIndex = -1
+        pendingSeekPosition = 0
+        isRestoringState = false
+    }
+
     fun play(song: Song) {
+        clearPendingRestore()
         if (handleSameSongPlayback(song)) return
 
         val index = playlist.indexOfFirst { it.id == song.id }
@@ -960,7 +1051,7 @@ class MusicService : MediaSessionService() {
 
         // 切歌时释放兜底播放器，恢复 ExoPlayer 正常流程
         releaseFallbackPlayer()
-
+        clearPendingRestore()
         transitionHistory(song)
         Log.d(TAG, "playAtIndex: seeking to $safeIndex and playing")
         currentIndex = safeIndex
@@ -988,7 +1079,14 @@ class MusicService : MediaSessionService() {
     fun removeSongAtIndex(index: Int) {
         if (index !in playlist.indices) return
 
-        val wasPlaying = player?.isPlaying == true
+        val isRemovingCurrent = index == currentIndex
+        // wasPlaying 必须在释放兜底前判断（兜底也算在播）
+        val wasPlaying = player?.isPlaying == true || isFallbackActive()
+        // 删除正在播放的歌：先释放兜底 MediaPlayer，否则它会继续播放已删除的歌曲
+        if (isRemovingCurrent) {
+            releaseFallbackPlayer()
+            clearPendingRestore()
+        }
 
         player?.removeMediaItem(index)
 
@@ -997,9 +1095,13 @@ class MusicService : MediaSessionService() {
 
         when {
             index < currentIndex -> currentIndex--
-            index == currentIndex -> {
+            isRemovingCurrent -> {
                 if (currentIndex >= playlist.size) currentIndex = playlist.size - 1
                 if (currentIndex >= 0) {
+                    // 换入新歌必须显式建史：暂停删除时 play() 不触发 hook；播放中删除时
+                    // hook 因 currentHistoryId != 0（旧歌记录）跳过。漏建会导致新歌无历史、
+                    // 其收听时长被累计进旧歌记录（sessionListenTimeMs）污染排行榜
+                    transitionHistory(playlist[currentIndex])
                     player?.seekTo(currentIndex, 0)
                     if (wasPlaying) player?.play()
                 } else {
@@ -1048,7 +1150,17 @@ class MusicService : MediaSessionService() {
 
         player?.apply {
             playWhenReady = false
-            prepare()
+            if (playbackState == Player.STATE_READY) {
+                // 已就绪（Service 存活期间 Activity 重建走恢复）：prepare() 幂等，
+                // 不会再触发 STATE_READY，pendingSeek/isRestoringState 会永久悬挂
+                // → setPlaylist 被跳过、后续切歌 seek 被劫持。必须同步消费
+                seekTo(index, position)
+                pendingSeekIndex = -1
+                pendingSeekPosition = 0
+                isRestoringState = false
+            } else {
+                prepare()
+            }
         }
 
         _playerState.value = PlayerData(
@@ -1064,12 +1176,20 @@ class MusicService : MediaSessionService() {
             }
             withContext(Dispatchers.Main) {
                 if (existing != null) {
-                    currentHistoryId = existing.id
-                    sessionListenTimeMs = existing.thisDuration
-                    lastKnownPosition = position
+                    if (currentHistoryId == 0L) {
+                        // 播放尚未建史：正常续接路径
+                        currentHistoryId = existing.id
+                        sessionListenTimeMs = existing.thisDuration
+                        lastKnownPosition = position
+                    }
+                    // 已建史（查询窗口内用户点了播放，recordPlayHistory 已续接同一未结束记录）：
+                    // 跳过回写，否则 DB 旧值覆盖正在累计的收听时长、进度被拉回恢复点
                     lastHistorySongId = song.id
                 } else {
-                    transitionHistory(song)
+                    // 不主动建史：恢复到 PAUSED 态从未播放，建记录会被 finalizeOrphans
+                    // 伪造成 duration/10 的时长污染排行榜。真正播放时 onIsPlayingChanged(true)
+                    // 会触发 transitionHistory 续接/新建（lastHistorySongId 已置位避免重复）
+                    lastHistorySongId = song.id
                 }
             }
         }
@@ -1150,6 +1270,7 @@ class MusicService : MediaSessionService() {
     }
 
     fun prepareSong(song: Song, position: Long) {
+        clearPendingRestore()
         val mediaItem = buildMediaItem(song)
         currentSong = song
         currentIndex = playlist.indexOfFirst { it.id == song.id }
@@ -1176,6 +1297,8 @@ class MusicService : MediaSessionService() {
     }
 
     fun stopPlayback() {
+        clearPendingRestore()
+        cancelSleepTimer()
         serviceScope.launch { historyMutex.withLock { finalizeCurrentHistory() } }
         releaseFallbackPlayer()
         player?.stop()
@@ -1215,12 +1338,19 @@ class MusicService : MediaSessionService() {
     fun removeSongPermanently(index: Int) {
         if (index !in playlist.indices) return
 
+        // 删除正在播放的歌：先释放兜底（否则 fallback 继续播已删歌），清恢复标志
+        val isRemovingCurrent = index == currentIndex
+        if (isRemovingCurrent) {
+            releaseFallbackPlayer()
+            clearPendingRestore()
+        }
+
         // 清理转码缓存文件
         AudioTranscoder.deleteCachedTranscode(this, playlist[index].path)
 
         // 从 ExoPlayer 中移除对应媒体项
         player?.removeMediaItem(index)
-        
+
         // 从本地列表移除
         playlist.removeAt(index)
         _playlistFlow.value = playlist.toList()
@@ -1239,6 +1369,84 @@ class MusicService : MediaSessionService() {
                 if (currentIndex >= playlist.size) currentIndex = playlist.size - 1
                 if (currentIndex >= 0) playAtIndex(currentIndex) else stopPlayback()
             }
+        }
+    }
+
+    // ------------------- 睡眠定时器 -------------------
+    // 定时器协程由 Service 持有：ViewModel 销毁（退出界面）不会取消定时器，
+    // 否则设了"30 分钟后停止"退出界面后 Service 继续播放 → 通宵播放
+    fun startSleepTimer(minutes: Int) {
+        cancelSleepTimer()
+        if (minutes <= 0) return
+        val millis = minutes * 60_000L
+        _timerRemainingFlow.value = millis
+        sleepTimerJob = serviceScope.launch {
+            var remaining = millis
+            while (remaining > 0) {
+                delay(1000)
+                remaining -= 1000
+                _timerRemainingFlow.value = remaining
+            }
+            onSleepTimerExpired()
+        }
+    }
+
+    fun cancelSleepTimer() {
+        sleepTimerJob?.cancel()
+        sleepTimerJob = null
+        _timerRemainingFlow.value = 0
+        stopAfterCurrent = false
+    }
+
+    private fun onSleepTimerExpired() {
+        // 兜底播放中：出声即生效，暂停视为用户主动放弃
+        val mp = fallbackPlayer
+        if (mp != null) {
+            if (mp.isPlaying) {
+                stopAfterCurrent = true
+                showToast("将在当前歌曲结束后停止播放")
+            }
+            return
+        }
+        val p = player ?: return
+        // 用户暂停（READY 且 playWhenReady=false）：刻意设计——不设标志，定时作废，
+        // 避免给暂停态留下"播完再停"的悬挂标志
+        if (p.playbackState == Player.STATE_READY && !p.playWhenReady) return
+        // 其余情况（播放中 / 自动切歌 BUFFERING 间隙）一律生效：
+        // 到期唤醒点随机落在秒内，恰逢切歌间隙时 isPlaying=false，若直接 return
+        // 会被误判为"用户暂停"，定时器静默失效 → 通宵播放（UI 已显示定时结束，无从感知）。
+        // BUFFERING 间隙 playWhenReady 仍为 true，据此与用户暂停区分
+        stopAfterCurrent = true
+        showToast("将在当前歌曲结束后停止播放")
+    }
+
+    /** 进度循环调用：定时器到期后接近歌曲末尾时停止，而非切下一首（README 语义） */
+    private fun checkStopAfterCurrent(position: Long, duration: Long) {
+        if (!stopAfterCurrent) return
+        if (duration > 0 && position >= duration - 250) {
+            stopAfterCurrent = false
+            cancelSleepTimer()
+            if (isFallbackActive()) {
+                // 停完即释放：否则 pause 态的 fallbackPlayer 使 isFallbackActive() 恒为 true，
+                // onTaskRemoved 的 !isFallbackActive() 永不满足 → 服务滞留（内部已释放 WakeLock）
+                releaseFallbackPlayer()
+                _playerState.value = _playerState.value.copy(state = PlaybackState.PAUSED)
+            } else {
+                player?.pause()
+            }
+        }
+    }
+
+    /** 刷新 Service 内存中的歌曲对象（自定义歌词/封面设置后即时生效，无需重启 App） */
+    fun refreshSongInPlaylist(song: Song) {
+        val index = playlist.indexOfFirst { it.id == song.id }
+        if (index < 0) return
+        playlist[index] = song
+        _playlistFlow.value = playlist.toList()
+        if (currentSong?.id == song.id) {
+            currentSong = song
+            // 不重建媒体项（会重置播放进度/打断音频）；UI 通过 playerState 新 song 对象重载歌词/封面
+            updateState()
         }
     }
 
@@ -1307,21 +1515,23 @@ class MusicService : MediaSessionService() {
         }
     }
 
-    private suspend fun recordPlayHistory(song: Song): Long {
+    private suspend fun recordPlayHistory(song: Song): Pair<Long, Boolean> {
         return try {
             val unfinished = repository.getUnfinishedHistoryForSong(song.id)
             val baseDuration = unfinished?.thisDuration?.takeIf { it > 0 } ?: 0L
-            val id = if (unfinished != null) {
-                unfinished.id
+            val resumed = unfinished != null
+            val id = if (resumed) {
+                unfinished!!.id
             } else {
                 repository.recordPlayHistory(song)
             }
+            // 续接时保留跨会话累计时长，调用方据此决定是否清零
             sessionListenTimeMs = baseDuration
             lastKnownPosition = (player?.currentPosition?.coerceAtLeast(0)) ?: 0L
-            id
+            Pair(id, resumed)
         } catch (e: Exception) {
             Log.e(TAG, "Record play history error: ${e.message}", e)
-            0L
+            Pair(0L, false)
         }
     }
 
@@ -1349,12 +1559,20 @@ class MusicService : MediaSessionService() {
                     currentHistoryId = repository.finishPlayAndRecordNext(
                         oldId, System.currentTimeMillis(), sessionListenTimeMs, song
                     )
+                    // 新记录：清零累计；finishPlayAndRecordNext 已写入 oldId 的最终时长
+                    sessionListenTimeMs = 0L
+                    lastKnownPosition = 0L
                 } else {
-                    currentHistoryId = recordPlayHistory(song)
+                    val (newId, resumed) = recordPlayHistory(song)
+                    currentHistoryId = newId
+                    // 续接时 recordPlayHistory 已把 sessionListenTimeMs 设为续接时长，必须保留；
+                    // 否则跨会话累计的收听时长被向下覆盖为 0
+                    if (!resumed) {
+                        sessionListenTimeMs = 0L
+                        lastKnownPosition = 0L
+                    }
                 }
                 lastHistorySongId = song.id
-                sessionListenTimeMs = 0L
-                lastKnownPosition = 0L
             }
         }
     }
@@ -1395,7 +1613,12 @@ class MusicService : MediaSessionService() {
         // 必须用 Main.immediate：onDestroy 的 runBlocking 在主线程阻塞时，
         // Dispatchers.Main 会 post 到主 Looper（死锁/ANR）；immediate 在已处于主线程时内联执行
         val progress = withContext(Dispatchers.Main.immediate) {
-            player?.currentPosition ?: 0
+            // 兜底播放时 ExoPlayer 处于 pause（停在错误位置），真实进度在 fallbackPlayer
+            if (isFallbackActive()) {
+                fallbackPlayer?.currentPosition?.toLong() ?: 0
+            } else {
+                player?.currentPosition ?: 0
+            }
         }
         if (progress != lastSavedProgress) {
             lastSavedProgress = progress

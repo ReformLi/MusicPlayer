@@ -11,8 +11,6 @@ import android.provider.DocumentsContract
 import android.provider.MediaStore
 import android.util.Log
 import androidx.documentfile.provider.DocumentFile
-import com.hpu.musicplayer.data.AppDatabase
-import com.hpu.musicplayer.data.repository.MusicRepository
 import com.hpu.musicplayer.data.Song
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -66,7 +64,9 @@ object ScanManager {
             val dataCol = cursor.getColumnIndex(MediaStore.Audio.Media.DATA)
             while (cursor.moveToNext()) {
                 val path = resolveMediaPath(cursor, idCol, relPathCol, nameCol, dataCol, uri) ?: continue
-                if (!File(path).exists()) continue
+                // content:// 路径无法用 File.exists() 判断（恒 false），需跳过该检查；
+                // 否则 resolveMediaPath 的 content URI 兜底分支永远扫不到歌
+                if (!path.startsWith("content://") && !File(path).exists()) continue
                 songs.add(extractSongFromPath(context, path))
                 onProgress?.invoke(songs.size)
             }
@@ -141,73 +141,6 @@ object ScanManager {
         songs
     }
 
-    // ---------- 增量扫描（保护自定义字段） ----------
-    suspend fun scanIncremental(context: Context, folderUris: List<Uri>? = null) = withContext(Dispatchers.IO) {
-        // 无存储权限时直接中止，避免 query 返回空导致 mergeAndSave 清空整个库
-        if (folderUris == null && !Permissions.hasStoragePermission(context)) {
-            Log.w(TAG, "No storage permission, skip incremental scan to avoid wiping library")
-            return@withContext
-        }
-
-        // 1. 执行扫描，获取当前设备上的所有目标歌曲
-        val newSongs = if (folderUris == null) scanAll(context) else scanFolders(context, folderUris)
-
-        // 2. 扫描结果为空（权限被拒/扫描失败/文件被清空但未授权）时，不执行删除，防止误清空库
-        if (newSongs.isEmpty()) {
-            Log.w(TAG, "Incremental scan returned empty, skip merge to avoid wiping library")
-            return@withContext
-        }
-
-        // 3. 执行增量合并写入数据库
-        mergeAndSave(context, newSongs)
-    }
-
-    private suspend fun mergeAndSave(context: Context, newSongs: List<Song>) {
-        val repo = MusicRepository.getInstance(context)
-        val db = AppDatabase.getDatabase(context)
-        val existingSongs = repo.getAllSongsOnce()
-
-        val existingMap = mutableMapOf<String, Song>()
-        existingSongs.forEach { existingMap[it.path] = it }
-
-        val mergedSongs = mutableListOf<Song>()
-        for (newSong in newSongs) {
-            val oldSong = existingMap[newSong.path]
-            if (oldSong != null) {
-                val merged = oldSong.copy(
-                    title = newSong.title,
-                    artist = newSong.artist,
-                    album = newSong.album,
-                    duration = newSong.duration,
-                    fileSize = newSong.fileSize,
-                    coverPath = if (oldSong.customCoverPath != null) oldSong.coverPath
-                    else (newSong.coverPath ?: oldSong.coverPath),
-                    lrcPath = if (oldSong.customLrcPath != null) oldSong.lrcPath
-                    else (newSong.lrcPath ?: oldSong.lrcPath)
-                )
-                mergedSongs.add(merged)
-            } else {
-                // 新歌曲，设置添加日期
-                mergedSongs.add(newSong.copy(addedDate = System.currentTimeMillis()))
-            }
-        }
-
-        // 删除不在当前扫描结果中的歌曲（文件已被删除的）
-        val currentPaths = newSongs.map { it.path }.toSet()
-        val toDelete = existingSongs.filter { it.path !in currentPaths }
-        toDelete.forEach { db.songDao().delete(it) }
-
-        // 对保留/新增的歌曲进行 upsert（insertAll 的 replace 策略）
-        repo.insertSongs(mergedSongs)
-        Log.d(TAG, "Incremental scan merged ${mergedSongs.size} songs")
-        // 封面迁移（对所有歌曲，无论新旧）
-        for (song in mergedSongs) {
-            val dbSong = db.songDao().getSongByPath(song.path)
-            if (dbSong != null) {
-                CoverMigration.migrateSongCover(context, dbSong)
-            }
-        }
-    }
 
     /**
      * 将 SAF content URI 标准化为文件绝对路径，保证与 scanAll 路径格式一致。
@@ -244,13 +177,27 @@ object ScanManager {
         }
     }
 
-    // 辅助：从文件路径提取歌曲信息
+    // 辅助：从文件路径或 content URI 提取歌曲信息
     private fun extractSongFromPath(context: Context, path: String): Song {
         val retriever = MediaMetadataRetriever()
         var title = "未知歌曲"; var artist = "未知艺术家"; var album = "未知专辑"
         var duration = 0L; var coverPath: String? = null; var lrcPath: String? = null
+        var fileSize = 0L
         try {
-            retriever.setDataSource(path)
+            // content:// 需用 setDataSource(context, Uri) 重载，否则抛 IllegalArgumentException
+            if (path.startsWith("content://")) {
+                retriever.setDataSource(context, Uri.parse(path))
+                // 文件大小通过 contentResolver 查询 SIZE 列
+                context.contentResolver.query(Uri.parse(path), arrayOf(MediaStore.MediaColumns.SIZE), null, null, null)?.use { c ->
+                    if (c.moveToFirst()) {
+                        val idx = c.getColumnIndex(MediaStore.MediaColumns.SIZE)
+                        if (idx >= 0) fileSize = c.getLong(idx)
+                    }
+                }
+            } else {
+                retriever.setDataSource(path)
+                fileSize = File(path).length()
+            }
             title = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_TITLE)
                 ?: File(path).nameWithoutExtension.ifEmpty { "未知歌曲" }
             artist = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_ARTIST) ?: "未知艺术家"
@@ -264,7 +211,6 @@ object ScanManager {
         } finally {
             retriever.release()
         }
-        val fileSize = File(path).length()
         return Song(
             title = title, artist = artist, album = album,
             duration = duration, path = path,
@@ -392,124 +338,6 @@ object ScanManager {
                     onProgress?.invoke(result.size)
                 }
             }
-        }
-    }
-
-    /**
-     * 从音频文件的 URI 获取父目录 URI，然后查询同目录下的封面图片文件。
-     */
-    private fun findCoverInSameDir(context: Context, audioUri: Uri): String? {
-        val parentUri = getParentUri(audioUri) ?: return null
-        Log.d(TAG, "Searching cover in: $parentUri")
-
-        return findChildFileMatching(context, parentUri) { name ->
-            val lower = name.lowercase()
-            (lower.startsWith("cover") || lower.startsWith("album") || lower.startsWith("folder") || lower.startsWith("art")) &&
-                    (lower.endsWith(".jpg") || lower.endsWith(".png") || lower.endsWith(".jpeg"))
-        }?.let { fileUri ->
-            copyCoverToCache(context, fileUri)
-        }
-    }
-
-    /**
-     * 查找同目录下与音频文件同名的 .lrc 歌词文件。
-     */
-    private fun findLrcInSameDir(context: Context, audioUri: Uri): String? {
-        val parentUri = getParentUri(audioUri) ?: return null
-        val audioName = audioUri.lastPathSegment?.substringBeforeLast('.') ?: return null
-
-        Log.d(TAG, "Searching lrc for: $audioName in $parentUri")
-
-        return findChildFileMatching(context, parentUri) { name ->
-            name.removeSuffix(".lrc").equals(audioName, ignoreCase = true) && name.endsWith(".lrc", ignoreCase = true)
-        }?.let { fileUri ->
-            copyLrcToLocal(context, fileUri)
-        }
-    }
-
-    /**
-     * 获取文件所在目录的 URI。
-     * 支持 content:// 和 file:// 协议，以及 SAF 树形 URI。
-     */
-    private fun getParentUri(uri: Uri): Uri? {
-        return try {
-            if (uri.scheme == "file") {
-                val parentFile = File(uri.path!!).parentFile
-                parentFile?.let { Uri.fromFile(it) }
-            } else {
-                // 更简单的方法：截掉最后一个路径段
-                val uriString = uri.toString()
-                val lastSlash = uriString.lastIndexOf('/')
-                if (lastSlash > 0) {
-                    Uri.parse(uriString.substring(0, lastSlash))
-                } else null
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error getting parent uri: ${e.message}")
-            null
-        }
-    }
-
-    /**
-     * 在指定目录下查询符合条件的子文件。
-     * @param predicate 文件名过滤器
-     * @return 第一个匹配文件的 URI，找不到返回 null
-     */
-    private fun findChildFileMatching(context: Context, parentUri: Uri, predicate: (String) -> Boolean): Uri? {
-        val childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(
-            parentUri, DocumentsContract.getDocumentId(parentUri)
-        )
-        val projection = arrayOf(
-            DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-            DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-            DocumentsContract.Document.COLUMN_MIME_TYPE
-        )
-        context.contentResolver.query(childrenUri, projection, null, null, null)?.use { cursor ->
-            val nameCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DISPLAY_NAME)
-            val idCol = cursor.getColumnIndexOrThrow(DocumentsContract.Document.COLUMN_DOCUMENT_ID)
-            while (cursor.moveToNext()) {
-                val displayName = cursor.getString(nameCol)
-                if (displayName != null && predicate(displayName)) {
-                    val docId = cursor.getString(idCol)
-                    val childUri = DocumentsContract.buildDocumentUriUsingTree(parentUri, docId)
-                    Log.d(TAG, "Found matching file: $displayName -> $childUri")
-                    return childUri
-                }
-            }
-        }
-        return null
-    }
-
-    /**
-     * 将封面文件复制到应用缓存，返回缓存路径。
-     */
-    private fun copyCoverToCache(context: Context, sourceUri: Uri): String? {
-        return try {
-            context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                val data = input.readBytes()
-                saveCoverToCache(context, sourceUri.hashCode().toString(), data)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to copy cover: ${e.message}")
-            null
-        }
-    }
-
-    /**
-     * 将歌词文件复制到应用私有目录，返回本地路径。
-     */
-    private fun copyLrcToLocal(context: Context, sourceUri: Uri): String? {
-        return try {
-            val destDir = File(context.filesDir, "custom_lrcs")
-            if (!destDir.exists()) destDir.mkdirs()
-            val destFile = File(destDir, "${sourceUri.hashCode()}.lrc")
-            context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                destFile.outputStream().use { output -> input.copyTo(output) }
-            }
-            destFile.absolutePath
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to copy lrc: ${e.message}")
-            null
         }
     }
 

@@ -233,6 +233,16 @@ class SongsFragment : Fragment() {
                             song.album.contains(query, ignoreCase = true)
                 }
                 adapter.submitList(filtered)
+                // 清空搜索时必须补一次 Service 同步：搜索期间 DB 变化（收藏切换、删歌、
+                // 扫描入库）被 collect 的 currentQuery 非空门控跳过，Service 播放列表停在旧状态；
+                // 只恢复显示不补同步的话，点新入库的歌会走"追加到队列末尾"分支污染队列顺序
+                if (query.isEmpty() && !MusicService.isRestoringState) {
+                    val currentServiceIds = MusicService.playlistFlow.value.map { it.id }
+                    val newPlaylistIds = filtered.map { it.id }
+                    if (newPlaylistIds != currentServiceIds) {
+                        playerViewModel.setPlaylist(filtered)
+                    }
+                }
             }
 
             override fun afterTextChanged(s: Editable?) {}

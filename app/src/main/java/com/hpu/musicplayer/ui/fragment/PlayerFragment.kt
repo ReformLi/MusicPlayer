@@ -54,6 +54,16 @@ class PlayerFragment : Fragment() {
     private val lyricAdapter = LyricAdapter()
     private var lrcLines: List<LrcLine> = emptyList()
     private var lastSongId = -1L
+    // 歌词源路径：与 lastSongId 分开跟踪，元数据更新（如设置自定义歌词）后也能触发重载
+    private var lastLrcSource: String? = null
+    // 歌词异步加载令牌：快速切歌时旧解析协程晚到，凭 token 丢弃过期结果，
+    // 否则旧歌词会覆盖新歌歌词且 lastSongId 已更新导致永久错位
+    private var lyricLoadToken = 0
+    // 用户滚动歌词列表期间暂停自动滚动，停止后 3 秒内也不拉回（避免刚抬手就被拽回高亮行）
+    private var isUserScrolling = false
+    private var suppressAutoScrollUntil = 0L
+    // 歌词偏移量调节弹窗展示期间暂停 updateUI 的歌词高亮/滚动，避免实时预览被 100ms 进度回调覆盖
+    private var isOffsetDialogVisible = false
     private var isDiscShowing = false
     private var discRotator: ObjectAnimator? = null
 
@@ -115,6 +125,22 @@ class PlayerFragment : Fragment() {
             override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {}
         })
 
+        // 用户滚动检测：滚动期间（含惯性 SETTLING）暂停自动滚动；
+        // 停止后 3 秒内也不拉回，让用户能自由浏览歌词。
+        // scrollToPositionWithOffset 是瞬时定位，不经过 SETTLING，不会误判
+        binding.rvLyrics.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                when (newState) {
+                    RecyclerView.SCROLL_STATE_DRAGGING,
+                    RecyclerView.SCROLL_STATE_SETTLING -> isUserScrolling = true
+                    RecyclerView.SCROLL_STATE_IDLE -> {
+                        isUserScrolling = false
+                        suppressAutoScrollUntil = android.os.SystemClock.elapsedRealtime() + 3000
+                    }
+                }
+            }
+        })
+
         // 使用 viewLifecycleOwner.lifecycleScope 确保视图销毁时自动取消
         var initialPlayDone = false
         viewLifecycleOwner.lifecycleScope.launch {
@@ -140,8 +166,6 @@ class PlayerFragment : Fragment() {
         // 点击歌词区域进入全屏歌词（仅当有歌词时才响应）
         val goFullscreen: (View) -> Unit = {
             if (lrcLines.isNotEmpty()) {
-                android.widget.Toast.makeText(requireContext(), "进入全屏歌词", android.widget.Toast.LENGTH_SHORT).show()
-                Log.d("PlayerFragment", "lyricContainer clicked")
                 findNavController().navigate(R.id.action_playerFragment_to_fullscreenLyricsFragment)
             }
         }
@@ -204,7 +228,7 @@ class PlayerFragment : Fragment() {
             binding.tvCurrentTime.text = formatTime(safeProgress)
             binding.tvTotalTime.text = formatTime(safeDuration)
 
-            // 封面 + 歌词：仅在歌曲切换时加载一次，避免每 100ms 进度更新重复触发 Coil 加载
+            // 封面：仅在歌曲切换时加载一次，避免每 100ms 进度更新重复触发 Coil 加载
             if (song.id != lastSongId) {
                 lastSongId = song.id
                 val coverPath = song.customCoverPath ?: song.coverPath
@@ -216,37 +240,46 @@ class PlayerFragment : Fragment() {
                 } else {
                     binding.ivAlbumArt.setImageResource(R.drawable.ic_music_note)
                 }
-                loadLyrics(song)
-                Log.d("PlayerFragment", "歌词行数: ${lrcLines.size}, path: ${song.lrcPath}")
-//                Toast.makeText(requireContext(), "歌词行数1: ${lyricAdapter.itemCount}", Toast.LENGTH_SHORT).show()
             }
-//            Log.d("PlayerFragment", "lyricContainer height: ${binding.lyricContainer.height}, rvLyrics height: ${binding.rvLyrics.height}")
-            // 歌词高亮与滚动
-            if (lrcLines.isNotEmpty()) {
+            // 歌词：按"歌词源路径"重载。切歌和元数据更新（SongDetail 设置自定义歌词后
+            // Service 侧刷新 song 对象）都会改变源路径，两种场景都需重载
+            val lrcSource = song.customLrcPath ?: song.lrcPath
+            if (lrcSource != lastLrcSource) {
+                loadLyrics(song)
+            }
+
+            // 歌词高亮与滚动（偏移量调节弹窗展示期间暂停，避免覆盖实时预览）
+            if (lrcLines.isNotEmpty() && !isOffsetDialogVisible) {
                 val offsetMs = LyricConfig.getOffset(requireContext())
                 val adjustedProgress = safeProgress + offsetMs
                 val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
                 if (index >= 0) {
                     lyricAdapter.updateCurrentIndex(index)
-                    // 同步滚动，保持丝滑；高亮行字体放大1.2倍，额外高度约
-                    // 0.2*fontSizeSp*density，中心需上移一半即 0.1*fontSizeSp*density
-                    val density = resources.displayMetrics.density
-                    val highlightShift = (lyricAdapter.fontSizeSp * density * 0.2f).toInt()
-                    val offset = binding.rvLyrics.height / 2 - binding.rvLyrics.paddingTop - highlightShift
-                    (binding.rvLyrics.layoutManager as LinearLayoutManager)
-                        .scrollToPositionWithOffset(index, offset)
+                    // 仅在用户没有滚动歌词时自动滚动；高亮行仍实时更新
+                    if (canAutoScrollLyrics()) {
+                        // 同步滚动，保持丝滑；高亮行字体放大1.2倍，额外高度约
+                        // 0.2*fontSizeSp*density，中心需上移一半即 0.1*fontSizeSp*density
+                        val density = resources.displayMetrics.density
+                        val highlightShift = (lyricAdapter.fontSizeSp * density * 0.2f).toInt()
+                        val offset = binding.rvLyrics.height / 2 - binding.rvLyrics.paddingTop - highlightShift
+                        (binding.rvLyrics.layoutManager as LinearLayoutManager)
+                            .scrollToPositionWithOffset(index, offset)
+                    }
                 } else {
                     // 进度在所有歌词之前（如拖到开头），清除高亮并滚到顶部
                     lyricAdapter.updateCurrentIndex(-1)
-                    (binding.rvLyrics.layoutManager as LinearLayoutManager)
-                        .scrollToPositionWithOffset(0, 0)
+                    if (canAutoScrollLyrics()) {
+                        (binding.rvLyrics.layoutManager as LinearLayoutManager)
+                            .scrollToPositionWithOffset(0, 0)
+                    }
                 }
             }
 
             // 进度条（仅在非拖动时更新）
             if (!binding.seekBar.isPressed) {
-                val max = data.duration.coerceAtLeast(1L).toFloat()
-                val pos = data.progress.coerceIn(0L, data.duration).toFloat()
+                // 与开头规范化保持一致：duration 为负时 coerceIn(0, 负数) 会抛 IllegalArgumentException
+                val max = safeDuration.coerceAtLeast(1L).toFloat()
+                val pos = safeProgress.toFloat()
 
                 // 先设置 valueTo，再设置 value，并确保在主线程中一次性完成
                 binding.seekBar.apply {
@@ -281,13 +314,22 @@ class PlayerFragment : Fragment() {
             binding.rvLyrics.visibility = View.VISIBLE
             if (lrcLines.isEmpty()) {
                 binding.tvNoLyrics.visibility = View.VISIBLE
-                lyricAdapter.submitList(emptyList())   // 清空旧歌词
+                // 注意：不清 adapter——loadLyrics 完成回调已 submitList(lrcLines) 提交过空列表，
+                // 此处每 100ms 的进度回调里重复 submitList + notifyDataSetChanged 纯属浪费
             } else {
                 binding.tvNoLyrics.visibility = View.GONE
             }
 
         } else {
-            // 无歌曲时重置界面
+            // 无歌曲时重置界面；同时重载标记，否则同一首歌再次播放时封面/歌词不会重载
+            lastSongId = -1L
+            lastLrcSource = null
+            // 歌词数据也必须清：否则停止播放（lrcSource 均为 null）后，
+            // 下一首无歌词的歌不会触发重载（null != null 为 false），残留上一首歌词
+            if (lrcLines.isNotEmpty()) {
+                lrcLines = emptyList()
+                lyricAdapter.submitList(emptyList())
+            }
             binding.tvSongTitle.text = "未选择歌曲"
             binding.tvSongArtist.text = ""
             binding.tvCurrentTime.text = "00:00"
@@ -301,12 +343,16 @@ class PlayerFragment : Fragment() {
     }
 
     private fun loadLyrics(song: Song) {
+        // token 防竞态：快速切歌时旧协程晚到，凭 token 丢弃过期结果
+        val token = ++lyricLoadToken
+        val lrcPath = song.customLrcPath ?: song.lrcPath
+        lastLrcSource = lrcPath
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-            val lrcPath = song.customLrcPath ?: song.lrcPath
             val lines = if (lrcPath != null) {
                 LrcParser.parse(lrcPath)
             } else emptyList()
             withContext(Dispatchers.Main) {
+                if (token != lyricLoadToken || _binding == null) return@withContext
                 lrcLines = lines
                 lyricAdapter.submitList(lrcLines)
                 // 歌词加载完成后同步更新"暂无歌词"可见性，避免与异步加载竞态导致重叠
@@ -314,6 +360,9 @@ class PlayerFragment : Fragment() {
                     binding.tvNoLyrics.visibility = View.VISIBLE
                 } else {
                     binding.tvNoLyrics.visibility = View.GONE
+                    // 偏移弹窗展示期间跳过自动滚动：避免弹窗打开时自动切歌，
+                    // 新歌词的加载滚动覆盖弹窗的实时预览位置
+                    if (isOffsetDialogVisible) return@withContext
                     // 歌词异步加载完成后，补滚到当前播放进度位置
                     // （updateUI 中的滚动逻辑此时可能因 lrcLines 还为空而跳过）
                     val currentProgress = playerViewModel.playerState.value.progress
@@ -349,6 +398,12 @@ class PlayerFragment : Fragment() {
 //            }
 //        }
 //    }
+
+    /** 用户未在滚动歌词（且停止滚动已超过 3 秒）时才允许自动滚动到高亮行 */
+    private fun canAutoScrollLyrics(): Boolean {
+        if (isUserScrolling) return false
+        return android.os.SystemClock.elapsedRealtime() >= suppressAutoScrollUntil
+    }
 
     private fun setupControls() {
         binding.seekBar.valueFrom = 0f
@@ -510,6 +565,9 @@ class PlayerFragment : Fragment() {
             .setView(dialogView.root)
             .create()
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        // 弹窗展示期间暂停 updateUI 的歌词高亮/滚动，否则 100ms 进度回调会覆盖实时预览
+        isOffsetDialogVisible = true
+        dialog.setOnDismissListener { isOffsetDialogVisible = false }
 
         dialogView.btnOffsetReset.setOnClickListener {
             dialogView.sliderOffset.value = 0f
@@ -566,6 +624,8 @@ class PlayerFragment : Fragment() {
      * 播放时显示光盘：专辑图片往左平移，光盘从后面露出右侧部分，整体居中，自身圆心旋转
      */
     private fun showDisc() {
+        // postDelayed 重试路径可能在视图销毁后回调，此时直接放弃
+        if (_binding == null || !isAdded) return
         if (isDiscShowing) return
         isDiscShowing = true
         binding.albumDiscContainer.post {
@@ -633,6 +693,12 @@ class PlayerFragment : Fragment() {
         discRotator?.cancel()
         discRotator = null
         isDiscShowing = false
+        // 视图重建（如从全屏歌词返回）后 ImageView 是新 inflate 的，
+        // 若不重置标记，song.id == lastSongId 会跳过封面加载，显示占位图直到切歌
+        lastSongId = -1L
+        lastLrcSource = null
+        isUserScrolling = false
+        isOffsetDialogVisible = false
         _binding = null
     }
 }

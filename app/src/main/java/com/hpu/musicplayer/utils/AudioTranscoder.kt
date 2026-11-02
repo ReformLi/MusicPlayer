@@ -11,6 +11,8 @@ import java.io.File
 import java.nio.ByteBuffer
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * FLAC → AAC/M4A 转码器。
@@ -83,9 +85,12 @@ object AudioTranscoder {
         var audioTrackIndex = -1
 
         return try {
-            // 1. 准备输出文件
-            val outputFile = File(outputPath)
-            if (outputFile.exists()) outputFile.delete()
+            // 1. 准备输出文件：先写 .tmp，完整转码成功后 rename 到最终路径。
+            //    直接写最终路径时若进程中途被杀（后台转码 + LMK），会留下非空但未收尾的
+            //    坏 M4A，被 transcodeAsync 的缓存命中判据（exists && length>0）永久误命中，
+            //    转码自愈从此失效；rename 保证最终路径要么完整要么不存在
+            val writePath = "$outputPath.tmp"
+            File(writePath).delete()
 
             // 2. MediaExtractor 读取源 FLAC
             extractor = MediaExtractor().apply {
@@ -94,15 +99,17 @@ object AudioTranscoder {
 
             val audioTrack = findAudioTrack(extractor)
             if (audioTrack < 0) {
-                Log.e(TAG, "No audio track found in source")
-                return false
+                // 抛异常而非 return：catch 分支统一做 codec/extractor 释放 + 半成品清理，
+                // 直接 return 会跳过释放导致 MediaExtractor 泄漏
+                throw IllegalStateException("No audio track found in source")
             }
             extractor.selectTrack(audioTrack)
 
             val inputFormat = extractor.getTrackFormat(audioTrack)
             val sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE).takeIf { it > 0 } ?: SAMPLE_RATE
             val channelCount = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT).takeIf { it > 0 } ?: CHANNEL_COUNT
-            val mime = inputFormat.getString(MediaFormat.KEY_MIME) ?: return false
+            val mime = inputFormat.getString(MediaFormat.KEY_MIME)
+                ?: throw IllegalStateException("Missing MIME in track format")
 
             // 3. 解码器
             decoder = MediaCodec.createDecoderByType(mime).apply {
@@ -120,8 +127,8 @@ object AudioTranscoder {
                 start()
             }
 
-            // 5. MediaMuxer 封装为 M4A
-            muxer = MediaMuxer(outputPath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
+            // 5. MediaMuxer 封装为 M4A（写入临时文件）
+            muxer = MediaMuxer(writePath, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
 
             // 6. 转码主循环
             var inputDone = false
@@ -138,7 +145,13 @@ object AudioTranscoder {
             val samplesPerFrame = 1024L
             val frameDurationUs = samplesPerFrame * 1_000_000L / sampleRate
 
+            // 超时看门狗：编码器异常（不吐 EOS）时避免死循环占用 IO 线程
+            val deadlineAt = android.os.SystemClock.elapsedRealtime() + 10 * 60_000L
+
             while (!encoderDone) {
+                if (android.os.SystemClock.elapsedRealtime() > deadlineAt) {
+                    throw IllegalStateException("Transcode timeout (10min): $sourcePath")
+                }
                 // 6a. 喂数据给解码器
                 if (!inputDone) {
                     val inIndex = decoder.dequeueInputBuffer(10_000)
@@ -260,9 +273,13 @@ object AudioTranscoder {
             try { muxer.release() } catch (_: Exception) {}
             try { extractor.release() } catch (_: Exception) {}
 
-            val success = outputFile.exists() && outputFile.length() > 0
-            Log.i(TAG, "Transcode ${if (success) "succeeded" else "failed"}: $sourcePath -> $outputPath (${outputFile.length()} bytes)")
-            success
+            val tmpFile = File(writePath)
+            val hasOutput = tmpFile.exists() && tmpFile.length() > 0
+            // 原子收尾：rename 失败（极罕见）视为转码失败
+            val renamed = hasOutput && tmpFile.renameTo(File(outputPath))
+            if (!renamed) tmpFile.delete()
+            Log.i(TAG, "Transcode ${if (renamed) "succeeded" else "failed"}: $sourcePath -> $outputPath")
+            renamed
         } catch (e: Exception) {
             Log.e(TAG, "Transcode failed: $sourcePath -> $outputPath", e)
             try { decoder?.stop() } catch (_: Exception) {}
@@ -272,7 +289,8 @@ object AudioTranscoder {
             if (muxerStarted) { try { muxer?.stop() } catch (_: Exception) {} }
             try { muxer?.release() } catch (_: Exception) {}
             try { extractor?.release() } catch (_: Exception) {}
-            // 失败时清理半成品
+            // 失败时清理半成品（tmp 为主；旧版本可能直接写过 outputPath，一并清理）
+            File("$outputPath.tmp").delete()
             File(outputPath).delete()
             false
         }
@@ -306,11 +324,30 @@ object AudioTranscoder {
     }
 
     /**
+     * 按源文件路径互斥的锁表：防止同一损坏 FLAC 被并发转码、
+     * 两个任务同时写同一个缓存文件（输出相互覆盖产生损坏的 M4A）。
+     */
+    private val pathLocks = java.util.Collections.synchronizedMap(mutableMapOf<String, Mutex>())
+
+    /**
      * 在 IO 线程异步转码，返回输出路径（失败返回 null）。
+     * 同一源路径的并发调用串行化：后到者等锁期间先行任务已完成，
+     * 直接命中缓存文件不再重复转码。
      */
     suspend fun transcodeAsync(context: Context, sourcePath: String): String? =
         withContext(Dispatchers.IO) {
-            val outPath = File(cacheDir(context), cacheFileName(sourcePath)).absolutePath
-            if (transcodeToAac(sourcePath, outPath)) outPath else null
+            val mutex = synchronized(pathLocks) { pathLocks.getOrPut(sourcePath) { Mutex() } }
+            mutex.withLock {
+                val outPath = File(cacheDir(context), cacheFileName(sourcePath)).absolutePath
+                val outFile = File(outPath)
+                if (outFile.exists() && outFile.length() > 0) {
+                    // 并发任务已产出完整缓存，直接复用
+                    outPath
+                } else if (transcodeToAac(sourcePath, outPath)) {
+                    outPath
+                } else {
+                    null
+                }
+            }
         }
 }

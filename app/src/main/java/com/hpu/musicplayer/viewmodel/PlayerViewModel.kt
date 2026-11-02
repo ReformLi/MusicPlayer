@@ -17,11 +17,7 @@ import com.hpu.musicplayer.service.MusicService
 import com.hpu.musicplayer.service.PlayMode
 import com.hpu.musicplayer.service.PlaybackState
 import com.hpu.musicplayer.service.PlayerData
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 class PlayerViewModel(application: Application) : AndroidViewModel(application) {
@@ -54,10 +50,8 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     private var isConnecting = false
     private val maxPendingActions = 20  // 限制队列最大长度，防止无限增长
 
-    // ---------- 定时器 ----------
-    private var timerJob: Job? = null
-    private val _timerRemaining = MutableStateFlow(0L)
-    val timerRemaining: StateFlow<Long> = _timerRemaining.asStateFlow()
+    // ---------- 定时器（由 Service 持有，ViewModel 销毁后仍生效，避免退出界面后通宵播放）----------
+    val timerRemaining: StateFlow<Long> = MusicService.timerRemainingFlow
 
     init {
         connectToService()
@@ -145,7 +139,10 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
             enqueueAction { togglePlayPause() }
             return
         }
-        if (mediaController?.isPlaying == true) {
+        // 用 Service 播放状态判断而非 controller.isPlaying：
+        // 兜底播放（损坏 FLAC）时 ExoPlayer 处于 pause，controller.isPlaying=false，
+        // 点"暂停"会被误判为"未在播放"执行 play()，导致兜底播放无法暂停
+        if (playerState.value.state == PlaybackState.PLAYING) {
             mediaController?.pause()
         } else {
             mediaController?.play()
@@ -319,7 +316,20 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
     fun updateSong(song: Song) {
         viewModelScope.launch {
             repository.updateSong(song)
+            // 同步刷新 Service 内存中的歌曲对象，使自定义歌词/封面即时生效（无需重启 App）
+            refreshSongInService(song)
         }
+    }
+
+    private fun refreshSongInService(song: Song) {
+        if (mediaController == null) {
+            enqueueAction { refreshSongInService(song) }
+            return
+        }
+        val bundle = Bundle().apply {
+            putParcelable(MusicService.EXTRA_SONG, song)
+        }
+        sendCustomCommandInternal(MusicService.ACTION_UPDATE_SONG, bundle)
     }
 
     fun toggleFavorite(song: Song) {
@@ -340,34 +350,26 @@ class PlayerViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // ---------- 定时器 ----------
+    // ---------- 定时器（委托 Service）----------
     fun startTimer(minutes: Int) {
-        cancelTimer()
-        if (minutes <= 0) return
-
-        val millis = minutes * 60_000L
-        _timerRemaining.value = millis
-
-        timerJob = viewModelScope.launch {
-            var remaining = millis
-            while (remaining > 0) {
-                delay(1000)
-                remaining -= 1000
-                _timerRemaining.value = remaining
-            }
-            // 时间到，停止播放并释放服务资源
-            stopPlayback()
+        if (mediaController == null) {
+            enqueueAction { startTimer(minutes) }
+            return
         }
+        val bundle = Bundle().apply { putInt(MusicService.EXTRA_MINUTES, minutes) }
+        sendCustomCommandInternal(MusicService.ACTION_START_TIMER, bundle)
     }
 
     fun cancelTimer() {
-        timerJob?.cancel()
-        timerJob = null
-        _timerRemaining.value = 0
+        if (mediaController == null) {
+            enqueueAction { cancelTimer() }
+            return
+        }
+        sendCustomCommandInternal(MusicService.ACTION_CANCEL_TIMER)
     }
 
     override fun onCleared() {
-        cancelTimer()
+        // 不取消睡眠定时器：定时器由 Service 持有，ViewModel 销毁（退出界面）后应继续生效
         isCleared = true
         // 取消进行中的连接：防止销毁后 listener 回调注入新 controller（已被 release 的引用之外再泄漏一个）
         try { controllerFuture?.cancel(false) } catch (_: Exception) {}

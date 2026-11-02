@@ -31,10 +31,18 @@ import com.hpu.musicplayer.ui.adapter.HistoryAdapter
 import com.hpu.musicplayer.ui.adapter.RankAdapter
 import com.hpu.musicplayer.ui.dialog.SongInfoDialogFragment
 import com.hpu.musicplayer.viewmodel.PlayerViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 class HistoryFragment : Fragment() {
+
+    companion object {
+        /** 滑动删除/撤销专用：不随 fragment 生命周期取消（见 setupSwipeToDelete 注释） */
+        private val historyOpsScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    }
 
     private var _binding: FragmentHistoryBinding? = null
     private val binding get() = _binding!!
@@ -237,6 +245,9 @@ class HistoryFragment : Fragment() {
     }
 
     // ========== 排行榜弹窗 ==========
+    // 持有引用：view 销毁（导航离开本页）时主动 dismiss，避免 Dialog 窗口泄漏悬空
+    private var rankDialog: Dialog? = null
+
     private fun showRankingDialog() {
         val dialogBinding = DialogRankingsBinding.inflate(layoutInflater)
         val dialog = Dialog(requireContext())
@@ -275,10 +286,16 @@ class HistoryFragment : Fragment() {
 
         // 关闭
         dialogBinding.btnRankClose.setOnClickListener { dialog.dismiss() }
+        // 弹窗关闭时停止 collect，避免向已关闭的弹窗继续提交数据
+        dialog.setOnDismissListener {
+            rankJob?.cancel()
+            rankJob = null
+        }
 
         // 加载数据
         loadRankings(rankAdapter, sortByDuration)
 
+        rankDialog = dialog
         dialog.show()
     }
 
@@ -380,10 +397,18 @@ class HistoryFragment : Fragment() {
                 val position = viewHolder.bindingAdapterPosition
                 if (position == RecyclerView.NO_POSITION) return
                 val history = adapter.currentList[position]
-                lifecycleScope.launch { repository.deletePlayHistory(history) }
+                // 保存删除任务：撤销时必须等 delete 落盘后再 insert，
+                // 否则 insert 先执行、delete 随后提交会把恢复的记录又删掉（撤销"失效"）。
+                // 删除/撤销都放独立 scope：fragment 级 lifecycleScope 在用户滑删后立即
+                // 返回时会取消协程，join 挂起点被取消 → 撤销的 insert 静默丢失（用户
+                // 以为已恢复）。操作完成即自亡，无泄漏
+                val deleteJob = historyOpsScope.launch { repository.deletePlayHistory(history) }
                 Snackbar.make(binding.root, "已从历史中移除", Snackbar.LENGTH_LONG)
                     .setAction("撤销") {
-                        lifecycleScope.launch { repository.insertOrReplacePlayHistory(history) }
+                        historyOpsScope.launch {
+                            deleteJob.join()
+                            repository.insertOrReplacePlayHistory(history)
+                        }
                     }
                     .show()
             }
@@ -414,6 +439,9 @@ class HistoryFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        // 导航离开本页时关闭排行榜弹窗，避免 Dialog 窗口悬空泄漏
+        rankDialog?.dismiss()
+        rankDialog = null
         _binding = null
     }
 }

@@ -41,6 +41,10 @@ class FullscreenLyricsFragment : Fragment() {
     private val lyricAdapter = LyricAdapter()
     private var lrcLines: List<LrcLine> = emptyList()
     private var lastSongId = -1L
+    // 歌词异步加载令牌：快速切歌时旧协程晚到，凭 token 丢弃过期结果
+    private var lyricLoadToken = 0
+    // 用户停止滚动后，自动滚动的恢复时间戳（抬手后 3 秒内不拉回高亮行）
+    private var suppressAutoScrollUntil = 0L
 
     /** 保存进入全屏歌词前的 Toolbar 原始背景，退出时恢复 */
     private var originalToolbarBackground: android.graphics.drawable.Drawable? = null
@@ -151,6 +155,19 @@ class FullscreenLyricsFragment : Fragment() {
                     updateProgressBarPosition()
                 }
             }
+            // 用户滚动（含惯性 SETTLING）期间暂停自动滚动；停止后 3 秒内也不拉回，
+            // 否则手指刚离开就被自动滚回高亮行，用户根本无法浏览歌词。
+            // scrollToPositionWithOffset 是瞬时定位，不经过 SETTLING，不会误判
+            override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                when (newState) {
+                    RecyclerView.SCROLL_STATE_DRAGGING,
+                    RecyclerView.SCROLL_STATE_SETTLING -> isUserScrolling = true
+                    RecyclerView.SCROLL_STATE_IDLE -> {
+                        isUserScrolling = false
+                        suppressAutoScrollUntil = android.os.SystemClock.elapsedRealtime() + 3000
+                    }
+                }
+            }
         })
     }
 
@@ -258,23 +275,29 @@ class FullscreenLyricsFragment : Fragment() {
                 loadLyrics(song)
             }
 
-            // 自动滚动歌词（播放时），不触发进度条
+            // 自动滚动歌词（播放时），不触发进度条；用户滚动期间只更新高亮不拉回
             if (lrcLines.isNotEmpty()) {
                 val offsetMs = LyricConfig.getOffset(requireContext())
                 val adjustedProgress = safeProgress + offsetMs
                 val index = lrcLines.indexOfLast { it.time <= adjustedProgress }
+                val canAutoScroll = !isUserScrolling &&
+                        android.os.SystemClock.elapsedRealtime() >= suppressAutoScrollUntil
                 if (index >= 0) {
                     lyricAdapter.updateCurrentIndex(index)
-                    val density = resources.displayMetrics.density
-                    val highlightShift = (lyricAdapter.fontSizeSp * density * 0.2f).toInt()
-                    val offset = binding.rvFullscreenLyrics.height / 2 - binding.rvFullscreenLyrics.paddingTop - highlightShift
-                    (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
-                        .scrollToPositionWithOffset(index, offset)
+                    if (canAutoScroll) {
+                        val density = resources.displayMetrics.density
+                        val highlightShift = (lyricAdapter.fontSizeSp * density * 0.2f).toInt()
+                        val offset = binding.rvFullscreenLyrics.height / 2 - binding.rvFullscreenLyrics.paddingTop - highlightShift
+                        (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
+                            .scrollToPositionWithOffset(index, offset)
+                    }
                 } else {
                     // 进度在所有歌词之前（如拖到开头），清除高亮并滚到顶部
                     lyricAdapter.updateCurrentIndex(-1)
-                    (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
-                        .scrollToPositionWithOffset(0, 0)
+                    if (canAutoScroll) {
+                        (binding.rvFullscreenLyrics.layoutManager as LinearLayoutManager)
+                            .scrollToPositionWithOffset(0, 0)
+                    }
                 }
             }
 
@@ -289,16 +312,31 @@ class FullscreenLyricsFragment : Fragment() {
             } else {
                 clearScreenOn()
             }
+        } else {
+            // 无歌曲（停止播放/播放失败）：重置界面与歌词数据，否则全屏页冻结在旧歌状态
+            lastSongId = -1L
+            lyricLoadToken++   // 丢弃在途的歌词加载结果
+            if (lrcLines.isNotEmpty()) {
+                lrcLines = emptyList()
+                lyricAdapter.submitList(emptyList())
+            }
+            binding.tvFullscreenTitle.text = "未选择歌曲"
+            binding.tvFullscreenArtist.text = ""
+            binding.btnFullscreenPlayPause.setImageResource(R.drawable.ic_play)
+            clearScreenOn()
         }
     }
 
     private fun loadLyrics(song: Song) {
+        // token 防竞态：快速切歌时旧协程晚到，凭 token 丢弃过期结果
+        val token = ++lyricLoadToken
         viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
             val lrcPath = song.customLrcPath ?: song.lrcPath
             val lines = if (lrcPath != null) {
                 LrcParser.parse(lrcPath)
             } else emptyList()
             withContext(Dispatchers.Main) {
+                if (token != lyricLoadToken || _binding == null) return@withContext
                 lrcLines = lines
                 lyricAdapter.submitList(lrcLines)
                 // 歌词异步加载完成后，补滚到当前播放进度位置

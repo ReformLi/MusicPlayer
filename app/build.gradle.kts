@@ -77,11 +77,7 @@ dependencies {
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
 
-    // Glide 用于加载封面
-    implementation ("com.github.bumptech.glide:glide:4.16.0")
-//    kapt("com.github.bumptech.glide:compiler:4.16.0")
-    ksp("com.github.bumptech.glide:ksp:4.16.0")
-
+    // 封面加载统一用 Coil（Glide 已移除：代码中零使用，纯死依赖）
     implementation("io.coil-kt:coil:2.6.0")
 
     implementation("com.google.guava:guava:33.4.0-android")

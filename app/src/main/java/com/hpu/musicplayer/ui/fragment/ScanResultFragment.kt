@@ -10,6 +10,7 @@ import android.widget.Toast
 import androidx.core.view.MenuProvider
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -18,10 +19,13 @@ import com.hpu.musicplayer.data.AppDatabase
 import com.hpu.musicplayer.data.Song
 import com.hpu.musicplayer.databinding.FragmentScanResultBinding
 import com.hpu.musicplayer.databinding.ItemScanFolderBinding
+import com.hpu.musicplayer.utils.AudioTranscoder
 import com.hpu.musicplayer.utils.CoverMigration
 import com.hpu.musicplayer.utils.ScanManager
+import com.hpu.musicplayer.viewmodel.PlayerViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 class ScanResultFragment : Fragment() {
@@ -36,9 +40,11 @@ class ScanResultFragment : Fragment() {
     private val selectedFolders = mutableSetOf<String>()
     private lateinit var adapter: FolderAdapter
     private var optionsMenu: android.view.Menu? = null
+    private lateinit var playerViewModel: PlayerViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        playerViewModel = ViewModelProvider(requireActivity())[PlayerViewModel::class.java]
         arguments?.let {
             scanAllRequested = it.getBoolean("scanAll", false)
             val uriStrings = it.getStringArrayList("folderUris")
@@ -101,22 +107,27 @@ class ScanResultFragment : Fragment() {
         binding.tvScanning.text = "正在扫描，已发现 0 首歌曲..."
         binding.btnAddSelected.isEnabled = false
 
-        lifecycleScope.launch {
+        // 用 viewLifecycleOwner.lifecycleScope：扫描中切到其他页面（replace 不清栈）会销毁 view，
+        // fragment 级 lifecycleScope 仍存活，回调里 binding!! 会 NPE 崩溃
+        viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val result = if (scanAllRequested) {
                     ScanManager.scanAll(requireContext()) { count ->
-                        lifecycleScope.launch(Dispatchers.Main) {
+                        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
+                            if (_binding == null) return@launch
                             binding.tvScanning.text = "正在扫描，已发现 $count 首歌曲..."
                         }
                     }
                 } else {
                     ScanManager.scanFolders(requireContext(), customFolderUris ?: emptyList()) { count ->
-                        lifecycleScope.launch(Dispatchers.Main) {
+                        viewLifecycleOwner.lifecycleScope.launch(Dispatchers.Main) {
+                            if (_binding == null) return@launch
                             binding.tvScanning.text = "正在扫描，已发现 $count 首歌曲..."
                         }
                     }
                 }
 
+                if (_binding == null) return@launch
                 songs.clear()
                 songs.addAll(result)
 
@@ -130,10 +141,13 @@ class ScanResultFragment : Fragment() {
                 adapter.updateData(folderMap)
                 updateSelectAllButton()
             } catch (e: Exception) {
+                if (_binding == null) return@launch
                 Toast.makeText(requireContext(), "扫描失败: ${e.message}", Toast.LENGTH_SHORT).show()
             } finally {
-                binding.loadingContainer.visibility = View.GONE
-                binding.btnAddSelected.isEnabled = true
+                if (_binding != null) {
+                    binding.loadingContainer.visibility = View.GONE
+                    binding.btnAddSelected.isEnabled = true
+                }
             }
         }
 
@@ -146,15 +160,51 @@ class ScanResultFragment : Fragment() {
             for (folder in selectedFolders) {
                 folderMap[folder]?.let { selectedSongs.addAll(it) }
             }
-            lifecycleScope.launch {
+            // 全程 Dispatchers.IO：normalizePath 对 content:// 条目内部执行 contentResolver.query
+            // （同步 Binder IPC），File.exists() 是 stat 系统调用，几百首歌的库在主线程跑接近 ANR。
+            // Room suspend DAO 自带 IO 切换，但普通函数不会
+            viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
                 val db = AppDatabase.Companion.getDatabase(requireContext())
-                // 标准化已入库路径（旧数据可能是 content URI），与新扫描的路径对齐
+                // 标准化双方路径再做去重：旧数据可能是 content URI，新扫描可能是 file 路径，
+                // 不对称比较会导致同一首歌重复入库（收藏看似"丢失"）
                 val existingPaths = db.songDao().getAllSongsOnce().map {
                     ScanManager.normalizePath(requireContext(), it.path)
                 }.toSet()
-                val newSongs = selectedSongs.filter { it.path !in existingPaths }
+                val newSongs = selectedSongs.filter {
+                    ScanManager.normalizePath(requireContext(), it.path) !in existingPaths
+                }
                 if (newSongs.isNotEmpty()) {
                     db.songDao().insertAll(newSongs)
+                }
+
+                // 增量清理：全量扫描时删除「文件已从设备删除」的库条目。
+                // 仅在 scanAll 时执行——自定义文件夹扫描只覆盖部分目录，不能作为删除依据；
+                // content:// 路径无法验证存在性，保守跳过不删
+                var removedCount = 0
+                if (scanAllRequested && songs.isNotEmpty()) {
+                    val scannedPaths = songs.map {
+                        ScanManager.normalizePath(requireContext(), it.path)
+                    }.toSet()
+                    val stale = db.songDao().getAllSongsOnce().filter { dbSong ->
+                        val norm = ScanManager.normalizePath(requireContext(), dbSong.path)
+                        norm !in scannedPaths &&
+                                !norm.startsWith("content://") &&
+                                !File(norm).exists()
+                    }
+                    for (staleSong in stale) {
+                        db.songDao().delete(staleSong)
+                        // 与 SongsFragment.deleteSong 的完整删除链保持一致：
+                        // - 清理转码缓存与封面文件（否则永久残留）
+                        // - 通知 Service 移除队列条目：否则下一轮 collect 的 setPlaylist 发现
+                        //   正在播放的歌不在新表，正在出声的歌（含兜底播放）会被扫描确认掐断
+                        AudioTranscoder.deleteCachedTranscode(requireContext(), staleSong.path)
+                        CoverMigration.deleteCoverFiles(requireContext(), staleSong.id)
+                        playerViewModel.removeSongById(staleSong.id)
+                        if (playerViewModel.playerState.value.currentSong?.id == staleSong.id) {
+                            playerViewModel.stopPlayback()
+                        }
+                    }
+                    removedCount = stale.size
                 }
 
                 for (song in selectedSongs) {
@@ -165,13 +215,18 @@ class ScanResultFragment : Fragment() {
                 }
 
                 val skipped = selectedSongs.size - newSongs.size
-                val msg = if (newSongs.isNotEmpty()) {
+                var msg = if (newSongs.isNotEmpty()) {
                     "已添加 ${newSongs.size} 首新歌曲" + if (skipped > 0) "（跳过 ${skipped} 首重复）" else ""
                 } else {
                     "所选歌曲已全部存在，无需添加"
                 }
-                Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
-                parentFragmentManager.popBackStack()
+                if (removedCount > 0) {
+                    msg += "，清理 ${removedCount} 首已删除文件"
+                }
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(requireContext(), msg, Toast.LENGTH_SHORT).show()
+                    parentFragmentManager.popBackStack()
+                }
             }
         }
     }
